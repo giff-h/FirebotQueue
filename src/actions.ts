@@ -1,5 +1,5 @@
-import { persistQueueEffect, QueueRestoreOptions, userAddedToQueueEffect, userRemovedFromQueueEffect, usersInListEffects } from "./effects";
-import { BallOfPower, BaseEffect } from "./firebot.model";
+import { persistQueueEffect, userAddedToQueueEffect, userRemovedFromQueueEffect, usersInListEffects } from "./effects";
+import { BallOfPower, BaseEffect, QueueRestoreOptions } from "./firebot.model";
 import { fetchSender, hopefulUserName } from "./utils";
 
 interface Action {
@@ -8,11 +8,14 @@ interface Action {
 }
 
 interface Actions {
-	[keys: string]: Action;
+	[trigger: string]: Action;
 }
 
+/**
+ * The object that contains the command and argument dispatch actions
+ */
 const actions: Actions = {
-	join: {
+	"!join": {
 		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
 			const
 				sender = fetchSender(ball),
@@ -30,7 +33,7 @@ const actions: Actions = {
 		}
 	},
 
-	leave: {
+	"!leave": {
 		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
 			const
 				sender = fetchSender(ball),
@@ -43,35 +46,40 @@ const actions: Actions = {
 		}
 	},
 
-	remove: {
+	"!queue": {
 		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
-			const user = hopefulUserName(ball.runRequest.command.args[1]);
+			const
+				verb = ball.runRequest.command.args[0].trim().toLowerCase(),
+				effects: BaseEffect[] = [];
 
-			if (user === null) {
-				return [];
-			} else {
-				const chatEffect = userRemovedFromQueueEffect(ball, queue, user);
-				return [
-					persistQueueEffect(ball, queue),
-					chatEffect
-				];
+			switch (verb) {
+				case "remove": {
+					const user = hopefulUserName(ball.runRequest.command.args[1]);
+
+					if (user !== null) {
+						const chatEffect = userRemovedFromQueueEffect(ball, queue, user);
+						effects.push(
+							persistQueueEffect(ball, queue),
+							chatEffect
+						);
+					}
+					break;
+				}
+				case "next": {
+					const nextCount = Number(ball.runRequest.command.args[1].trim());
+
+					if (!isNaN(nextCount)) {
+						const nextUp = queue.splice(0, nextCount);
+						effects.push(
+							persistQueueEffect(ball, queue),
+							...usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also")
+						);
+					}
+					break;
+				}
 			}
-		}
-	},
 
-	next: {
-		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
-			const nextCount = Number(ball.runRequest.command.args[1].trim());
-
-			if (isNaN(nextCount)) {
-				return [];
-			} else {
-				const nextUp = queue.splice(0, nextCount);
-				return [
-					persistQueueEffect(ball, queue),
-					...usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also")
-				];
-			}
+			return effects;
 		}
 	}
 };

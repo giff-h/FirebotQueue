@@ -88,3 +88,15 @@ export interface WriteFileEffect extends BaseEffect {
 	writeMode: "append" | "delete" | "replace-line" | "delete-all" | "replace";
 	text: string;
 }
+
+/* Misc */
+
+export interface RunResults {
+	success: boolean;
+	errorMessage?: string;
+	effects: BaseEffect[];
+}
+
+export interface QueueRestoreOptions {
+	user?: string;
+}

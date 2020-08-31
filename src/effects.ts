@@ -1,6 +1,14 @@
-import { BallOfPower, BaseEffect, ChatMessageEffect, WriteFileEffect } from "./firebot.model";
+import { BallOfPower, BaseEffect, ChatMessageEffect, QueueRestoreOptions, WriteFileEffect } from "./firebot.model";
 import { isString } from "./utils";
 
+/**
+ * If the user is in the queue, does nothing, and returns the appropriate chat effect.
+ * If the user is not in the queue, adds, and returns the appropriate chat effect.
+ * @param ball All of Firebot's given data
+ * @param queue The fabled queue
+ * @param user The user to add to the queue
+ * @returns The effect to return to Firebot
+ */
 export function userAddedToQueueEffect(ball: BallOfPower, queue: string[], user: string): ChatMessageEffect {
 	const
 		effect: ChatMessageEffect = {
@@ -19,6 +27,14 @@ export function userAddedToQueueEffect(ball: BallOfPower, queue: string[], user:
 	return effect;
 }
 
+/**
+ * If the user is in the queue, removes, and returns the appropriate chat effect.
+ * If the user is not in the queue, does nothing, and returns the appropriate chat effect.
+ * @param ball All of Firebot's given data
+ * @param queue The fabled queue
+ * @param user The user to remove from the queue
+ * @returns The effect to return to Firebot
+ */
 export function userRemovedFromQueueEffect(ball: BallOfPower, queue: string[], user: string): ChatMessageEffect {
 	const
 		effect: ChatMessageEffect = {
@@ -37,6 +53,14 @@ export function userRemovedFromQueueEffect(ball: BallOfPower, queue: string[], u
 	return effect;
 }
 
+/**
+ * Reports all the users in the array as chat messages, comma-separated. Since the size of this list is unbound, it can be many messages.
+ * @param ball All of Firebot's given data
+ * @param users The array of users to report
+ * @param initialPrefix The part of the first message before the users. Result: `"<initialPrefix>: user1, user2, user3"`
+ * @param subsequentPrefix The part of the additional messages before the users. Result: `"<subsequentPrefix>: user82, user83, user84"`
+ * @returns The effects to return to Firebot
+ */
 export function usersInListEffects(ball: BallOfPower, users: string[], initialPrefix: string, subsequentPrefix: string): ChatMessageEffect[] {
 	const effects: ChatMessageEffect[] = [];
 
@@ -46,7 +70,7 @@ export function usersInListEffects(ball: BallOfPower, users: string[], initialPr
 
 	let message = `${initialPrefix}: ${users.splice(0, 1)[0]}`,
 		tempMessage = message;
-	
+
 	while (users.length > 0) {
 		tempMessage += `, ${users[0]}`;
 
@@ -72,6 +96,12 @@ export function usersInListEffects(ball: BallOfPower, users: string[], initialPr
 	return effects;
 }
 
+/**
+ * Creates the effect to save the queue.
+ * @param ball All of Firebot's given data
+ * @param queue The fabled queue
+ * @returns The effect to return to Firebot
+ */
 export function persistQueueEffect(ball: BallOfPower, queue: string[]): BaseEffect {
 	return {
 		type: ball.effectType.TEXT_TO_FILE,
@@ -81,10 +111,12 @@ export function persistQueueEffect(ball: BallOfPower, queue: string[]): BaseEffe
 	} as WriteFileEffect;
 }
 
-export interface QueueRestoreOptions {
-	user?: string;
-}
-
+/**
+ * Creates the effects to restore the queue in the event of a problem.
+ * @param ball All of Firebot's given data
+ * @param options Any extra data to alter the effect
+ * @returns The effects to return to Firebot
+ */
 export function restoreQueueEffects(ball: BallOfPower, options?: QueueRestoreOptions): BaseEffect[] {
 	const
 		user = options?.user,
