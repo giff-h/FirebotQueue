@@ -46,6 +46,26 @@ const actions: Actions = {
 		}
 	},
 
+	"!rejoin": {
+		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
+			const
+				sender = fetchSender(ball),
+				leaveEffect = userRemovedFromQueueEffect(ball, queue, sender),
+				joinEffect = userAddedToQueueEffect(ball, queue, sender);
+			
+			return [
+				persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+				leaveEffect,
+				joinEffect
+			];
+		},
+		restore: function(ball: BallOfPower): QueueRestoreOptions {
+			return {
+				user: fetchSender(ball)
+			};
+		}
+	},
+
 	"!queue": {
 		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
 			const

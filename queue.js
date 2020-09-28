@@ -202,6 +202,21 @@ const actions = {
             ];
         }
     },
+    "!rejoin": {
+        effects: function (ball, queue) {
+            const sender = fetchSender(ball), leaveEffect = userRemovedFromQueueEffect(ball, queue, sender), joinEffect = userAddedToQueueEffect(ball, queue, sender);
+            return [
+                persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+                leaveEffect,
+                joinEffect
+            ];
+        },
+        restore: function (ball) {
+            return {
+                user: fetchSender(ball)
+            };
+        }
+    },
     "!queue": {
         effects: function (ball, queue) {
             const verb = ball.runRequest.command.args[0].trim().toLowerCase(), effects = [];
