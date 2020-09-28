@@ -6,8 +6,7 @@
 		"removeComments": false,
 		"sourceMap": false,
 		"noUnusedParameters": true,
-		"outFile": "queue.js",
-		"module": "amd"
-	},
-	"files": ["src/queue.ts"]
+		"outDir": "./js/",
+		"module": "ES6"
+	}
 }
