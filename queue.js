@@ -138,17 +138,18 @@ function usersInListEffects(ball, users, initialPrefix, subsequentPrefix) {
     return effects;
 }
 /**
- * Creates the effect to save the queue.
+ * Creates the effect to write a list of users to a file.
  * @param ball All of Firebot's given data
- * @param queue The fabled queue
+ * @param filepath The path of the file to be written
+ * @param users The array of users to save
  * @returns The effect to return to Firebot
  */
-function persistQueueEffect(ball, queue) {
+function persistUsersToFileEffect(ball, filepath, users) {
     return {
         type: ball.effectType.TEXT_TO_FILE,
-        filepath: ball.runRequest.parameters.queue,
+        filepath,
         writeMode: "replace",
-        text: JSON.stringify(queue)
+        text: JSON.stringify(users)
     };
 }
 /**
@@ -160,7 +161,7 @@ function persistQueueEffect(ball, queue) {
 function restoreQueueEffects(ball, options) {
     const user = options === null || options === void 0 ? void 0 : options.user, userGiven = isString(user), queue = userGiven ? [user] : [];
     return [
-        persistQueueEffect(ball, queue),
+        persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
         {
             type: ball.effectType.CHAT,
             message: "There was a problem with the queue, it is now " + (userGiven ? `just ${user}` : "empty")
@@ -175,7 +176,7 @@ const actions = {
         effects: function (ball, queue) {
             const sender = fetchSender(ball), chatEffect = userAddedToQueueEffect(ball, queue, sender);
             return [
-                persistQueueEffect(ball, queue),
+                persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
                 chatEffect
             ];
         },
@@ -189,7 +190,7 @@ const actions = {
         effects: function (ball, queue) {
             const sender = fetchSender(ball), chatEffect = userRemovedFromQueueEffect(ball, queue, sender);
             return [
-                persistQueueEffect(ball, queue),
+                persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
                 chatEffect
             ];
         }
@@ -202,7 +203,7 @@ const actions = {
                     const user = hopefulUserName(ball.runRequest.command.args[1]);
                     if (user !== null) {
                         const chatEffect = userRemovedFromQueueEffect(ball, queue, user);
-                        effects.push(persistQueueEffect(ball, queue), chatEffect);
+                        effects.push(persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue), chatEffect);
                     }
                     break;
                 }
@@ -210,7 +211,7 @@ const actions = {
                     const nextCount = Number(ball.runRequest.command.args[1].trim());
                     if (!isNaN(nextCount)) {
                         const nextUp = queue.splice(0, nextCount);
-                        effects.push(persistQueueEffect(ball, queue), ...usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also"));
+                        effects.push(persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue), persistUsersToFileEffect(ball, ball.runRequest.parameters.next, nextUp), ...usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also"));
                     }
                     break;
                 }
@@ -259,6 +260,10 @@ exports.getDefaultParameters = function() {
             queue: {
                 type: "filepath",
                 description: "The .json file that contains the queue"
+            },
+            next: {
+                type: "filepath",
+                description: "The .json file that holds the users grabbed by !queue next X"
             }
         });
     });

@@ -80,17 +80,18 @@ export function usersInListEffects(ball, users, initialPrefix, subsequentPrefix)
     return effects;
 }
 /**
- * Creates the effect to save the queue.
+ * Creates the effect to write a list of users to a file.
  * @param ball All of Firebot's given data
- * @param queue The fabled queue
+ * @param filepath The path of the file to be written
+ * @param users The array of users to save
  * @returns The effect to return to Firebot
  */
-export function persistQueueEffect(ball, queue) {
+export function persistUsersToFileEffect(ball, filepath, users) {
     return {
         type: ball.effectType.TEXT_TO_FILE,
-        filepath: ball.runRequest.parameters.queue,
+        filepath,
         writeMode: "replace",
-        text: JSON.stringify(queue)
+        text: JSON.stringify(users)
     };
 }
 /**
@@ -102,7 +103,7 @@ export function persistQueueEffect(ball, queue) {
 export function restoreQueueEffects(ball, options) {
     const user = options === null || options === void 0 ? void 0 : options.user, userGiven = isString(user), queue = userGiven ? [user] : [];
     return [
-        persistQueueEffect(ball, queue),
+        persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
         {
             type: ball.effectType.CHAT,
             message: "There was a problem with the queue, it is now " + (userGiven ? `just ${user}` : "empty")
