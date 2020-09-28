@@ -1,0 +1,2 @@
+/* Firebot givens */
+export {};
