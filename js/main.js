@@ -41,6 +41,10 @@ export function getDefaultParameters() {
             queue: {
                 type: "filepath",
                 description: "The .json file that contains the queue"
+            },
+            next: {
+                type: "filepath",
+                description: "The .json file that holds the users grabbed by !queue next X"
             }
         });
     });

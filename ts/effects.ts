@@ -1,5 +1,5 @@
 import { BallOfPower, BaseEffect, ChatMessageEffect, QueueRestoreOptions, WriteFileEffect } from "./firebot.model";
-import { isString } from "./utils";
+import { isString, userIndexInQueue } from "./utils";
 
 /**
  * If the user is in the queue, does nothing, and returns the appropriate chat effect.
@@ -15,13 +15,13 @@ export function userAddedToQueueEffect(ball: BallOfPower, queue: string[], user:
 			type: ball.effectType.CHAT,
 			message: ""
 		},
-		userIndex = queue.indexOf(user);
+		userIndex = userIndexInQueue(queue, user);
 	
 	if (userIndex === -1) {
 		queue.push(user);
 		effect.message = `${user} added to the queue at position ${queue.length}`;
 	} else {
-		effect.message = `${user} is already in the queue at position ${userIndex}`;
+		effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex}`;
 	}
 
 	return effect;
@@ -41,13 +41,12 @@ export function userRemovedFromQueueEffect(ball: BallOfPower, queue: string[], u
 			type: ball.effectType.CHAT,
 			message: ""
 		},
-		userIndex = queue.indexOf(user);
+		userIndex = userIndexInQueue(queue, user);
 
 	if (userIndex === -1) {
 		effect.message = `${user} wasn't in the queue`;
 	} else {
-		queue.splice(userIndex, 1);
-		effect.message = `${user} is no longer in the queue`;
+		effect.message = `${queue.splice(userIndex, 1)[0]} is no longer in the queue`;
 	}
 
 	return effect;
@@ -97,17 +96,18 @@ export function usersInListEffects(ball: BallOfPower, users: string[], initialPr
 }
 
 /**
- * Creates the effect to save the queue.
+ * Creates the effect to write a list of users to a file.
  * @param ball All of Firebot's given data
- * @param queue The fabled queue
+ * @param filepath The path of the file to be written
+ * @param users The array of users to save
  * @returns The effect to return to Firebot
  */
-export function persistQueueEffect(ball: BallOfPower, queue: string[]): BaseEffect {
+export function persistUsersToFileEffect(ball: BallOfPower, filepath: string, users: string[]): BaseEffect {
 	return {
 		type: ball.effectType.TEXT_TO_FILE,
-		filepath: ball.runRequest.parameters.queue,
+		filepath,
 		writeMode: "replace",
-		text: JSON.stringify(queue)
+		text: JSON.stringify(users)
 	} as WriteFileEffect;
 }
 
@@ -124,7 +124,7 @@ export function restoreQueueEffects(ball: BallOfPower, options?: QueueRestoreOpt
 		queue: string[] = userGiven ? [user] : [];
 
 	return [
-		persistQueueEffect(ball, queue),
+		persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
 		{
 			type: ball.effectType.CHAT,
 			message: "There was a problem with the queue, it is now " + (userGiven ? `just ${user}` : "empty")

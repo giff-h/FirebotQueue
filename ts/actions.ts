@@ -1,4 +1,4 @@
-import { persistQueueEffect, userAddedToQueueEffect, userRemovedFromQueueEffect, usersInListEffects } from "./effects";
+import { persistUsersToFileEffect, userAddedToQueueEffect, userRemovedFromQueueEffect, usersInListEffects } from "./effects";
 import { BallOfPower, BaseEffect, QueueRestoreOptions } from "./firebot.model";
 import { fetchSender, hopefulUserName } from "./utils";
 
@@ -22,7 +22,7 @@ const actions: Actions = {
 				chatEffect = userAddedToQueueEffect(ball, queue, sender);
 
 			return [
-				persistQueueEffect(ball, queue),
+				persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
 				chatEffect
 			];
 		},
@@ -40,9 +40,29 @@ const actions: Actions = {
 				chatEffect = userRemovedFromQueueEffect(ball, queue, sender);
 
 			return [
-				persistQueueEffect(ball, queue),
+				persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
 				chatEffect
 			];
+		}
+	},
+
+	"!rejoin": {
+		effects: function(ball: BallOfPower, queue: string[]): BaseEffect[] {
+			const
+				sender = fetchSender(ball),
+				leaveEffect = userRemovedFromQueueEffect(ball, queue, sender),
+				joinEffect = userAddedToQueueEffect(ball, queue, sender);
+			
+			return [
+				persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+				leaveEffect,
+				joinEffect
+			];
+		},
+		restore: function(ball: BallOfPower): QueueRestoreOptions {
+			return {
+				user: fetchSender(ball)
+			};
 		}
 	},
 
@@ -59,7 +79,7 @@ const actions: Actions = {
 					if (user !== null) {
 						const chatEffect = userRemovedFromQueueEffect(ball, queue, user);
 						effects.push(
-							persistQueueEffect(ball, queue),
+							persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
 							chatEffect
 						);
 					}
@@ -71,7 +91,8 @@ const actions: Actions = {
 					if (!isNaN(nextCount)) {
 						const nextUp = queue.splice(0, nextCount);
 						effects.push(
-							persistQueueEffect(ball, queue),
+							persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+							persistUsersToFileEffect(ball, ball.runRequest.parameters.next, nextUp),
 							...usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also")
 						);
 					}

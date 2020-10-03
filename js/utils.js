@@ -23,10 +23,10 @@ function isValidQueue(hopefulQueue) {
 /**
  * Look up the name of the user from Firebot data
  * @param ball All of Firebot's given data
- * @returns The lowercase name of the user who invoked the command
+ * @returns The username of who invoked the command
  */
 export function fetchSender(ball) {
-    return ball.runRequest.command.commandSender.toLowerCase();
+    return ball.runRequest.command.commandSender;
 }
 /**
  * Load the queue from wherever it's stored. If there's any problem with this, an error is raised
@@ -46,14 +46,22 @@ export function loadQueue(ball) {
 /**
  * Parse a username from a given value. If the value isn't a string, returns `null`
  * @param raw The value that should be a username
- * @returns The lowercase username without leading `@`, or `null`
+ * @returns The username without leading `@`, or `null`
  */
 export function hopefulUserName(raw) {
     if (isString(raw)) {
-        raw = raw.trim().toLowerCase();
+        raw = raw.trim();
         return raw.startsWith("@") ? raw.substring(1) : raw;
     }
     else {
         return null;
     }
+}
+/**
+ * Performs a case insensitive index search for a user in the queue
+ * @param queue The fabled queue
+ * @param user The user to find in the queue
+ */
+export function userIndexInQueue(queue, user) {
+    return queue.map(u => u.toUpperCase()).indexOf(user.toUpperCase());
 }
