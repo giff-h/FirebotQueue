@@ -6,7 +6,10 @@
 		"removeComments": false,
 		"sourceMap": false,
 		"noUnusedParameters": true,
-		"outDir": "./js/",
+		"outDir": "./",
 		"module": "ES6"
-	}
+	},
+	"files": [
+		"queue.ts"
+	]
 }
