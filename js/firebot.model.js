@@ -1,2 +1,0 @@
-/* Firebot givens */
-export {};
