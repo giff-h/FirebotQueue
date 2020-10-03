@@ -33,7 +33,7 @@ namespace Types {
 		UPDATE_BUTTON: unknown;
 	}
 
-	export interface FirebotCommand {
+	interface FirebotCommand {
 		args: string[];
 		commandSender: string;
 		senderRoles: unknown[];
@@ -42,11 +42,11 @@ namespace Types {
 		triggeredArg: unknown;
 	}
 
-	export interface FirebotFS {
+	interface FirebotFS {
 		readFileSync: (pathArgument: string, options: any) => any;
 	}
 
-	export interface FirebotModules {
+	interface FirebotModules {
 		chat: unknown;
 		childProcess: unknown;
 		fs: FirebotFS;
@@ -198,7 +198,7 @@ namespace Effects {
 			queue.push(user);
 			effect.message = `${user} added to the queue at position ${queue.length}`;
 		} else {
-			effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex}`;
+			effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex + 1}`;
 		}
 
 		return effect;
@@ -326,6 +326,7 @@ namespace Actions {
 	export const actions: Actions = {
 		"!join": {
 			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
+				// These effects are built in this order on purpose, because the queue mutates.
 				const
 					sender = Utils.fetchSender(ball),
 					chatEffect = Effects.userAddedToQueueEffect(ball, queue, sender);
@@ -344,6 +345,7 @@ namespace Actions {
 
 		"!leave": {
 			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
+				// These effects are built in this order on purpose, because the queue mutates.
 				const
 					sender = Utils.fetchSender(ball),
 					chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender);
@@ -357,6 +359,7 @@ namespace Actions {
 
 		"!rejoin": {
 			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
+				// These effects are built in this order on purpose, because the queue mutates.
 				const
 					sender = Utils.fetchSender(ball),
 					leaveEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender),
@@ -386,6 +389,7 @@ namespace Actions {
 						const user = Utils.hopefulUserName(ball.runRequest.command.args[1]);
 
 						if (user !== null) {
+							// These effects are built in this order on purpose, because the queue mutates.
 							const chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, user);
 							effects.push(
 								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),

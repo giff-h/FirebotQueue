@@ -96,7 +96,7 @@ var Effects;
             effect.message = `${user} added to the queue at position ${queue.length}`;
         }
         else {
-            effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex}`;
+            effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex + 1}`;
         }
         return effect;
     }
@@ -202,6 +202,7 @@ var Actions;
     Actions.actions = {
         "!join": {
             effects: function (ball, queue) {
+                // These effects are built in this order on purpose, because the queue mutates.
                 const sender = Utils.fetchSender(ball), chatEffect = Effects.userAddedToQueueEffect(ball, queue, sender);
                 return [
                     Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
@@ -216,6 +217,7 @@ var Actions;
         },
         "!leave": {
             effects: function (ball, queue) {
+                // These effects are built in this order on purpose, because the queue mutates.
                 const sender = Utils.fetchSender(ball), chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender);
                 return [
                     Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
@@ -225,6 +227,7 @@ var Actions;
         },
         "!rejoin": {
             effects: function (ball, queue) {
+                // These effects are built in this order on purpose, because the queue mutates.
                 const sender = Utils.fetchSender(ball), leaveEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender), joinEffect = Effects.userAddedToQueueEffect(ball, queue, sender);
                 return [
                     Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
@@ -245,6 +248,7 @@ var Actions;
                     case "remove": {
                         const user = Utils.hopefulUserName(ball.runRequest.command.args[1]);
                         if (user !== null) {
+                            // These effects are built in this order on purpose, because the queue mutates.
                             const chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, user);
                             effects.push(Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue), chatEffect);
                         }
