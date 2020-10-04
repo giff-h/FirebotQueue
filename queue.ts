@@ -46,11 +46,20 @@ namespace Types {
 		readFileSync: (pathArgument: string, options: any) => any;
 	}
 
+	interface FirebotLogger {
+		debug: (arg: string) => void;
+		error: (arg: string) => void;
+		info: (arg: string) => void;
+		silly: (arg: string) => void;
+		verbose: (arg: string) => void;
+		warn: (arg: string) => void;
+	}
+
 	interface FirebotModules {
 		chat: unknown;
 		childProcess: unknown;
 		fs: FirebotFS;
-		logger: any;
+		logger: FirebotLogger;
 		mixplay: unknown;
 		path: unknown;
 		twitchChat: unknown;
@@ -411,6 +420,9 @@ namespace Actions {
 						}
 						break;
 					}
+					default: {
+						ball.runRequest.modules.logger.warn("!queue verb not handled: " + verb);
+					}
 				}
 
 				return effects;
@@ -432,6 +444,7 @@ function handle(ball: Types.BallOfPower): Types.BaseEffect[] {
 	let effects: Types.BaseEffect[] = [];
 
 	if (trigger in Actions.actions) {
+		ball.runRequest.modules.logger.debug("Acting on the trigger: " + trigger);
 		const action = Actions.actions[trigger];
 
 		let queue: string[] = [],
@@ -452,6 +465,8 @@ function handle(ball: Types.BallOfPower): Types.BaseEffect[] {
 				effects = Effects.restoreQueueEffects(ball);
 			}
 		}
+	} else {
+		ball.runRequest.modules.logger.warn("The expected trigger was not actionable: " + trigger);
 	}
 
 	return effects;

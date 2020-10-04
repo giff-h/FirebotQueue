@@ -37,7 +37,7 @@ function run(runRequest) {
 		result = { success: true, effects: [] },
 		logger = runRequest.modules.logger;
 
-	logger.info(runRequest);
+	logger.info(logger);
 
 	return new Promise(resolve => {
 		resolve(result);

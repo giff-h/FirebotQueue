@@ -262,6 +262,9 @@ var Actions;
                         }
                         break;
                     }
+                    default: {
+                        ball.runRequest.modules.logger.warn("!queue verb not handled: " + verb);
+                    }
                 }
                 return effects;
             }
@@ -277,6 +280,7 @@ function handle(ball) {
     const trigger = ball.runRequest.command.trigger;
     let effects = [];
     if (trigger in Actions.actions) {
+        ball.runRequest.modules.logger.debug("Acting on the trigger: " + trigger);
         const action = Actions.actions[trigger];
         let queue = [], isQueueValid = true;
         try {
@@ -296,6 +300,9 @@ function handle(ball) {
                 effects = Effects.restoreQueueEffects(ball);
             }
         }
+    }
+    else {
+        ball.runRequest.modules.logger.warn("The expected trigger was not actionable: " + trigger);
     }
     return effects;
 }
