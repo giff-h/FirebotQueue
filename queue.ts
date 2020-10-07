@@ -66,12 +66,17 @@ namespace Types {
 		utils: unknown;
 	}
 
+	interface ScriptParameters {
+		queue: string;
+		next: string;
+	}
+
 	export interface RunRequest {
 		command: FirebotCommand;
 		control: unknown;
 		firebot: unknown;
 		modules: FirebotModules;
-		parameters: any;
+		parameters: ScriptParameters;
 		trigger: unknown;
 		user: unknown;
 	}
@@ -147,13 +152,13 @@ namespace Utils {
 	}
 
 	/**
-	 * Load the queue from wherever it's stored. If there's any problem with this, an error is raised
-	 * and handled elsewhere so the proper effects can happen
+	 * Load the given file, and JSON parse to an array of strings. If there's any problem with this, an error is raised and handled elsewhere so the proper effects can happen
 	 * @param ball All of Firebot's given data
-	 * @returns The fabled queue
+	 * @param filepath The path of the file to be read
+	 * @returns The array of users
 	 */
-	export function loadQueue(ball: Types.BallOfPower): string[] {
-		const queue = JSON.parse(ball.runRequest.modules.fs.readFileSync(ball.runRequest.parameters.queue, "utf-8"));
+	export function loadUserArray(ball: Types.BallOfPower, filepath: string): string[] {
+		const queue = JSON.parse(ball.runRequest.modules.fs.readFileSync(filepath, "utf-8"));
 
 		if (isValidQueue(queue)) {
 			return queue;
@@ -311,6 +316,7 @@ namespace Effects {
 
 		return [
 			persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+			persistUsersToFileEffect(ball, ball.runRequest.parameters.next, []),
 			{
 				type: ball.effectType.CHAT,
 				message: "There was a problem with the queue, it is now " + (userGiven ? `just ${user}` : "empty")
@@ -420,6 +426,22 @@ namespace Actions {
 						}
 						break;
 					}
+					case "shift": {
+						const shiftCount = Number(ball.runRequest.command.args[1].trim());
+
+						if (!isNaN(shiftCount)) {
+							const
+								shiftUsers = queue.splice(0, shiftCount),
+								nextUp = Utils.loadUserArray(ball, ball.runRequest.parameters.next);
+
+							nextUp.push(...shiftUsers);
+							effects.push(
+								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
+								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.next, nextUp),
+								...Effects.usersInListEffects(ball, nextUp, `Next ${nextUp.length} in queue`, "Also")
+							);
+						}
+					}
 					default: {
 						ball.runRequest.modules.logger.warn("!queue verb not handled: " + verb);
 					}
@@ -451,7 +473,7 @@ function handle(ball: Types.BallOfPower): Types.BaseEffect[] {
 			isQueueValid = true;
 
 		try {
-			queue = Utils.loadQueue(ball);
+			queue = Utils.loadUserArray(ball, ball.runRequest.parameters.queue);
 		} catch {
 			isQueueValid = false;
 		}
