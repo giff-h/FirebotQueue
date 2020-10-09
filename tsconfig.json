@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "ES6",
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"removeComments": false,
+		"sourceMap": false,
+		"noUnusedParameters": true,
+		"outDir": "./",
+		"module": "CommonJS"
+	},
+	"files": [
+		"queue.ts"
+	]
+}

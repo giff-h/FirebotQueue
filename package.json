@@ -1,0 +1,22 @@
+{
+  "name": "firebot_queue",
+  "version": "1.0.0",
+  "description": "A set of custom scripts to operate a queue in Firebot",
+  "main": "queue.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hamstap85/FirebotQueue.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hamstap85/FirebotQueue/issues"
+  },
+  "homepage": "https://github.com/hamstap85/FirebotQueue#readme",
+  "devDependencies": {
+    "typescript": "^4.0.3"
+  }
+}
