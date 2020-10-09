@@ -129,6 +129,14 @@ namespace Utils {
 	}
 
 	/**
+	 * Check if the value is a valid number that can be used to manipulate the queues.
+	 * @param x The value to check
+	 */
+	export function isUsableNumber(x: number): boolean {
+		return !isNaN(x) && Number.isInteger(x) && x > 0;
+	}
+
+	/**
 	 * Check if something is an array of strings, which is the required queue structure.
 	 * @param hopefulQueue Can be anything
 	 */
@@ -281,7 +289,7 @@ class QueueManager {
 		const
 			default_data: Types.ComplexQueue = { queue: [], code: "" },
 			validator = (data: Types.ComplexQueue) => {
-				if (typeof data !== "object" || Utils.isValidQueue(data.queue)) {
+				if (typeof data !== "object" || !Utils.isValidQueue(data.queue)) {
 					return false;
 				} else if (!Utils.isString(data.code)) {
 					data.code = "";
@@ -333,9 +341,9 @@ class QueueManager {
 			queue.push(user);
 			effect.message = `${user} added to the queue at position ${queue.length}`;
 		} else {
-			this.uncacheQueue();
 			user = queue[userIndex];
 			effect.message = `${user} is already in the queue at position ${userIndex + 1}`;
+			this.uncacheQueue();
 		}
 
 		return effect;
@@ -355,8 +363,8 @@ class QueueManager {
 			userIndex = Utils.userIndexInArray(queue, user);
 
 		if (userIndex === -1) {
-			this.uncacheQueue();
 			effect.message = `${user} wasn't in the queue`;
+			this.uncacheQueue();
 		} else {
 			user = queue.splice(userIndex, 1)[0];
 			effect.message = `${user} is no longer in the queue`;
@@ -387,13 +395,13 @@ class QueueManager {
 
 	/**
 	 * Take some users from the front of the main queue, put them in the next-up queue, and report the next-up queue in chat.
-	 * If the count is 0, nothing happens, and nothing is reported.
+	 * If the count is not a positive integer, nothing happens, and nothing is reported.
 	 * This is aware of the chat message size limit of 500 characters, and splits the report across multiple messages if necessary.
 	 * @param count The number of users to move
 	 * @returns The chat effects to return to Firebot
 	 */
 	shiftSomeUsersToNextEffects(count: number): Types.ChatMessageEffect[] {
-		if (count === 0) {
+		if (!Utils.isUsableNumber(count)) {
 			return [];
 		}
 
@@ -440,8 +448,8 @@ class QueueManager {
 			userIndex = Utils.userIndexInArray(queue, user);
 
 		if (userIndex === -1) {
-			this.uncacheQueue();
 			effect.message = `${user} wasn't in the queue`;
+			this.uncacheQueue();
 		} else {
 			const next = this.next.queue;
 			user = queue.splice(userIndex, 1)[0];
@@ -454,20 +462,27 @@ class QueueManager {
 
 	/**
 	 * Take some users from the end of the next-up queue, put them at the front of the main queue, and report the next-up size in chat.
-	 * If the count is 0, nothing happens, and an appropriate message is reported.
+	 * If the count is not a positive integer, nothing happens, and an appropriate message is reported.
 	 * @param count The number of users to move
 	 * @returns The chat effect to return to Firebot
 	 */
 	unshiftSomeUsersFromNextEffect(count: number): Types.ChatMessageEffect {
-		if (count === 0) {
-			return Utils.chatMessageEffect("That wouldn't do anything");
+		if (!Utils.isUsableNumber(count)) {
+			return Utils.chatMessageEffect("That's an unusable number");
 		}
 
 		const
 			queue = this.queue,
-			next = this.next.queue;
+			next = this.next.queue,
+			initialQueueLength = queue.length;
 
-		queue.unshift(...next.splice(next.length - count, count));
+		if (count > next.length) {
+			count = next.length;
+		}
+		queue.unshift(...next.splice(next.length - count, count).filter(user => Utils.userIndexInArray(queue, user) === -1));
+		if (queue.length === initialQueueLength) {
+			this.uncacheQueue();
+		}
 		return Utils.chatMessageEffect(`There ${next.length === 1 ? "is" : "are"} now ${next.length} ${next.length === 1 ? "user" : "users"} next up`);
 	}
 
@@ -479,16 +494,23 @@ class QueueManager {
 	 */
 	unshiftOneUserFromNextEffect(user: string): Types.ChatMessageEffect {
 		const
+			queue = this.queue,
 			next = this.next.queue,
 			effect = Utils.chatMessageEffect(),
-			userIndex = Utils.userIndexInArray(next, user);
+			queueIndex = Utils.userIndexInArray(queue, user),
+			nextIndex = Utils.userIndexInArray(next, user);
 
-		if (userIndex === -1) {
-			this.uncacheNext();
+		if (nextIndex === -1) {
 			effect.message = `${user} wasn't up next`;
+			this.uncacheNext();
+			this.uncacheQueue();
+		} else if (queueIndex !== -1) {
+			user = queue[queueIndex];
+			next.splice(nextIndex, 1);
+			effect.message = `${user} is back in the queue at position ${queueIndex}`;
+			this.uncacheQueue();
 		} else {
-			const queue = this.queue;
-			user = next.splice(userIndex, 1)[0];
+			user = next.splice(nextIndex, 1)[0];
 			queue.unshift(user);
 			effect.message = `${user} is now at the front of the queue`;
 		}
@@ -532,7 +554,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					if (Utils.isString(nextArg)) {
 						const nextCount = Number(nextArg.trim());
 
-						if (!isNaN(nextCount) && nextCount !== 0) {
+						if (Utils.isUsableNumber(nextCount)) {
 							manager.next.queue.splice(0, manager.next.queue.length);
 							const chatEffects = manager.shiftSomeUsersToNextEffects(nextCount);
 							effects.push(...manager.persistEffects());
@@ -565,7 +587,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 								effects.push(...manager.persistEffects());
 								effects.push(chatEffect);
 							}
-						} else if (shiftCount !== 0) {
+						} else {
 							const chatEffects = manager.shiftSomeUsersToNextEffects(shiftCount);
 							effects.push(...manager.persistEffects());
 							effects.push(...chatEffects);
@@ -587,7 +609,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 								effects.push(...manager.persistEffects());
 								effects.push(chatEffect);
 							}
-						} else if (unshiftCount !== 0) {
+						} else {
 							const chatEffect = manager.unshiftSomeUsersFromNextEffect(unshiftCount);
 							effects.push(...manager.persistEffects());
 							effects.push(chatEffect);
@@ -636,11 +658,11 @@ export function getDefaultParameters(): Promise<Types.ScriptParameterDefinition>
 		resolve({
 			queue: {
 				type: "filepath",
-				description: "The .json file that contains the queue"
+				description: "The .json file that contains the main queue"
 			},
 			next: {
 				type: "filepath",
-				description: "The .json file that holds the users grabbed by !queue next X"
+				description: "The .json file that contains the next-up queue"
 			}
 		});
 	});

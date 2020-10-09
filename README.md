@@ -7,12 +7,16 @@ Two upcoming Firebot features will affect this project:
 
 # Short-comings
 - Currently v5, unknown if it will work on v6.
+- You need to enable Custom Script Effect in Firebot advanced settings.
 - Firebot complains that it may not be for v5, I do not know what's missing. I've followed the documentation on the wiki. It works fine though.
 - Any command parameter that can be a user is not validated to be an actual user in chat. This is not a real problem as currently the only way to get into the queue is if a user joins themself, and all user parameters affect users already in the queues.
+- Any command parameter that can be a user or a number will prefer a number, thus making a username that's all numbers impossible to access.
 
 # Setup
-- Download `queue.js`, and put it somewhere comfortable.
-- Create two empty text files, one for the main queue, one for the next up queue.
+- Download `queue.js`, and put it in the Firebot scripts folder.
+	- On Windows this is `%APPDATA%\Firebot\v5\profiles\Main Profile\scripts`.
+	- There is a "scripts folder" link in the Run Custom Script dialogue view in the Firebot trigger setup, to help find it.
+- Create two empty text files, one for the main queue, one for the next-up queue.
 	- It's standard to give them a `.json` extension, not `.txt`, but this doesn't really matter.
 	- It makes sense for them to live with `queue.js`, but again, this doesn't matter.
 - Add triggers for the following 4 main commands, and have them run `queue.js`.
@@ -43,8 +47,10 @@ Two upcoming Firebot features will affect this project:
 		- If the given user is not in the main queue, they are **not** added to the next-up queue, and the bot says in chat: `TwitchUser wasn't in the queue`.
 	- `unshift` - Usage: `!queue unshift 2` or `!queue unshift TwitchUser`
 		- If this is a number, that many users are grabbed from the end of the next-up queue, added to the front of the main queue, and the bot says in chat: `There is now 1 user next up`.
+		- If any of those users are already in the main queue, they are **not** added twice, and the message is the same.
 		- If this is a username, that user is grabbed from the next up queue, added to the front of the queue, and the bot says in chat: `TwitchUser is now at the front of the queue`.
 		- If the given user is not in the next up queue, they are **not** added to the main queue, and the bot says in chat: `TwitchUser wasn't up next`.
+		- If the given user is already in the main queue, they are **not** added twice, and the bot says in chat: `TwitchUser is back in the queue at position 3`.
 
 # Usage hints
 - Given usernames in command arguments are case insensitive, and `@` prefix is allowed. The names will appear in the queues as their display names.
@@ -54,13 +60,3 @@ Two upcoming Firebot features will affect this project:
 
 # Upcoming features
 - If you look at the contents of the next up queue file, you'll notice it isn't just a queue, but there's a `code` section as well. The upcoming feature will whisper this value to the users in the next up queue.
-
-# KNOWN ISSUES - DO NOT MERGE
-- `!queue unshift 10`
-	- If there are fewer than 10 users up next, the difference will be unshifted instead.
-	- Not a major problem, just annoying.
-- User in queue, user to up next, user rejoins queue, user shifted back.
-	- User is in the main queue twice.
-	- Not a major problem, removing the user still works until they're fully gone.
-- Any parameter that is a number is vulnerable to being a decimal, or negative, not sure what would happen then.
-	- This might cause an error, and the error would be reported in chat, but nothing would happen to the queues.
