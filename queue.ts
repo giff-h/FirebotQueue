@@ -81,11 +81,6 @@ namespace Types {
 		user: unknown;
 	}
 
-	export interface BallOfPower {
-		runRequest: RunRequest;
-		effectType: EffectTypeType;
-	}
-
 	/* Effects */
 
 	export interface BaseEffect {
@@ -106,16 +101,23 @@ namespace Types {
 
 	/* Misc */
 
-	export interface RunResults {
+	export interface ComplexQueue {
+		queue: string[];
+		code?: string;
+	}
+
+	export type ScriptParameterDefinition = {
+		[P in keyof ScriptParameters]: { type: string, description: string };
+	}
+
+	export interface RunResult {
 		success: boolean;
 		errorMessage?: string;
 		effects: Types.BaseEffect[];
 	}
-
-	export interface QueueRestoreOptions {
-		user?: string;
-	}
 }
+
+declare const EffectType: Types.EffectTypeType;  // This is available in the outer scope, from Firebot
 
 namespace Utils {
 	/**
@@ -127,10 +129,18 @@ namespace Utils {
 	}
 
 	/**
+	 * Check if the value is a valid number that can be used to manipulate the queues.
+	 * @param x The value to check
+	 */
+	export function isUsableNumber(x: number): boolean {
+		return !isNaN(x) && Number.isInteger(x) && x > 0;
+	}
+
+	/**
 	 * Check if something is an array of strings, which is the required queue structure.
 	 * @param hopefulQueue Can be anything
 	 */
-	function isValidQueue(hopefulQueue: unknown): hopefulQueue is string[] {
+	export function isValidQueue(hopefulQueue: unknown): hopefulQueue is string[] {
 		if (Array.isArray(hopefulQueue)) {
 			for (let i = 0; i < hopefulQueue.length; i++) {
 				if (!isString(hopefulQueue[i])) {
@@ -140,31 +150,6 @@ namespace Utils {
 			return true;
 		}
 		return false;
-	}
-
-	/**
-	 * Look up the name of the user from Firebot data
-	 * @param ball All of Firebot's given data
-	 * @returns The username of who invoked the command
-	 */
-	export function fetchSender(ball: Types.BallOfPower): string {
-		return ball.runRequest.command.commandSender;
-	}
-
-	/**
-	 * Load the given file, and JSON parse to an array of strings. If there's any problem with this, an error is raised and handled elsewhere so the proper effects can happen
-	 * @param ball All of Firebot's given data
-	 * @param filepath The path of the file to be read
-	 * @returns The array of users
-	 */
-	export function loadUserArray(ball: Types.BallOfPower, filepath: string): string[] {
-		const queue = JSON.parse(ball.runRequest.modules.fs.readFileSync(filepath, "utf-8"));
-
-		if (isValidQueue(queue)) {
-			return queue;
-		} else {
-			throw new Error("Invalid queue file structure");
-		}
 	}
 
 	/**
@@ -183,82 +168,252 @@ namespace Utils {
 
 	/**
 	 * Performs a case insensitive index search for a user in the queue
-	 * @param queue The fabled queue
+	 * @param users The fabled queue
 	 * @param user The user to find in the queue
 	 */
-	export function userIndexInQueue(queue: string[], user: string): number {
-		return queue.map(u => u.toUpperCase()).indexOf(user.toUpperCase());
+	export function userIndexInArray(users: string[], user: string): number {
+		return users.map(u => u.toUpperCase()).indexOf(user.toUpperCase());
+	}
+
+	/**
+	 * Build the structure of the chat message effect.
+	 * @param message An optional message for rapid construction, defaults to an empty string.
+	 * @returns The chat effect to return to Firebot
+	 */
+	export function chatMessageEffect(message: string = ""): Types.ChatMessageEffect {
+		return {
+			type: EffectType.CHAT,
+			message: message
+		};
 	}
 }
 
-namespace Effects {
+class QueueManager {
+	readonly effects: Types.BaseEffect[];  // The effects to return to Firebot
+	readonly queueCache: Record<string, any>;  // The cache is also used to know what files to persist at the end
+	readonly runRequest: Types.RunRequest;  // The data given by Firebot
+
+	constructor(runRequest: Types.RunRequest) {
+		this.runRequest = runRequest;
+
+		this.effects = [];
+		this.queueCache = {};
+	}
+
+	logDebug(message: any): void {
+		this.runRequest.modules.logger.debug(message);
+	}
+	logInfo(message: any): void {
+		this.runRequest.modules.logger.info(message);
+	}
+	logWarn(message: any): void {
+		this.runRequest.modules.logger.warn(message);
+	}
+
 	/**
-	 * If the user is in the queue, does nothing, and returns the appropriate chat effect.
-	 * If the user is not in the queue, adds, and returns the appropriate chat effect.
-	 * @param ball All of Firebot's given data
-	 * @param queue The fabled queue
-	 * @param user The user to add to the queue
-	 * @returns The effect to return to Firebot
+	 * If the main queue was loaded, and not changed, use this to prevent it from being unnecessarily rewritten.
 	 */
-	export function userAddedToQueueEffect(ball: Types.BallOfPower, queue: string[], user: string): Types.ChatMessageEffect {
+	uncacheQueue(): void {
+		delete this.queueCache[this.runRequest.parameters.queue];
+	}
+
+	/**
+	 * If the next-up queue was loaded, and not changed, use this to prevent it from being unnecessarily rewritten.
+	 */
+	uncacheNext(): void {
+		delete this.queueCache[this.runRequest.parameters.next];
+	}
+
+	/**
+	 * Build the Firebot effects to populate the queues from the cache to their respective files.
+	 * @returns The effects to return to Firebot
+	 */
+	persistEffects(): Types.WriteFileEffect[] {
+		const effects: Types.WriteFileEffect[] = [];
+		for (let filepath in this.queueCache)  {
+			effects.push({
+				type: EffectType.TEXT_TO_FILE,
+				filepath,
+				writeMode: "replace",
+				text: JSON.stringify(this.queueCache[filepath])
+			});
+		}
+		return effects;
+	}
+
+	/**
+	 * Load the given file, parse the data, and default to the given `default_data` if there's any problem, or the data is invalid.
+	 * If the data is parsed successfully, `validator` is called to verify its authenticity.
+	 * The final result is cached by the filepath in case it's accessed multiple times while handling a command.
+	 * @param filepath The path of the file to be read
+	 * @param default_data The value to use in the event of any problem
+	 * @param validator The function to validate the data, might receive any valid JSON.parse result
+	 */
+	loadDataFromFile<T>(filepath: string, default_data: T, validator: (data: unknown) => data is T): T {
+		if (filepath in this.queueCache) {
+			return this.queueCache[filepath];
+		} else {
+			let data = default_data;
+
+			try {
+				data = JSON.parse(this.runRequest.modules.fs.readFileSync(filepath, "utf-8"));
+			} catch {
+				this.logWarn("There was an error reading from the file");
+			}
+
+			if (!validator(data)) {
+				this.logWarn("The file structure was not correct");
+				data = default_data;
+			}
+
+			this.queueCache[filepath] = data;
+			return data;
+		}
+	}
+
+	/**
+	 * The main queue
+	 */
+	get queue(): string[] {
 		const
-			effect: Types.ChatMessageEffect = {
-				type: ball.effectType.CHAT,
-				message: ""
-			},
-			userIndex = Utils.userIndexInQueue(queue, user);
+			default_data: string[] = [],
+			validator = (data: unknown) => Utils.isValidQueue(data);
+
+		return this.loadDataFromFile(this.runRequest.parameters.queue, default_data, validator as (data: unknown) => data is string[]);
+	}
+
+	/**
+	 * The next-up queue
+	 */
+	get next(): Types.ComplexQueue {
+		const
+			default_data: Types.ComplexQueue = { queue: [], code: "" },
+			validator = (data: Types.ComplexQueue) => {
+				if (typeof data !== "object" || !Utils.isValidQueue(data.queue)) {
+					return false;
+				} else if (!Utils.isString(data.code)) {
+					data.code = "";
+				}
+				return true;
+			};
+
+		return this.loadDataFromFile(this.runRequest.parameters.next, default_data, validator as (data: unknown) => data is Types.ComplexQueue);
+	}
+
+	/**
+	 * The user who sent the command
+	 */
+	get sender(): string {
+		return this.runRequest.command.commandSender;
+	}
+
+	/**
+	 * The main trigger of the command
+	 */
+	get trigger(): string {
+		return this.runRequest.command.trigger;
+	}
+
+	/**
+	 * Load the n-th word after the command invoke. This is zero-indexed.
+	 * E.g. "!queue [0]next [1]7"
+	 * @param n The argument position
+	 * @returns The argument value
+	 */
+	commandArgument(n: number): string | undefined {
+		return this.runRequest.command.args[n];
+	}
+
+	/**
+	 * Add the given user to the main queue, and report the position in chat.
+	 * If the user is already in the queue, nothing happens, but the position is still reported.
+	 * The case of the user does not matter, but will persist if it was not found.
+	 * @param user The user to add to the main queue
+	 * @returns The chat effect to return to Firebot
+	 */
+	addUserToQueueEffect(user: string): Types.ChatMessageEffect {
+		const
+			queue = this.queue,
+			effect = Utils.chatMessageEffect(),
+			userIndex = Utils.userIndexInArray(queue, user);
 
 		if (userIndex === -1) {
 			queue.push(user);
 			effect.message = `${user} added to the queue at position ${queue.length}`;
 		} else {
-			effect.message = `${queue[userIndex]} is already in the queue at position ${userIndex + 1}`;
+			user = queue[userIndex];
+			effect.message = `${user} is already in the queue at position ${userIndex + 1}`;
+			this.uncacheQueue();
 		}
 
 		return effect;
 	}
 
 	/**
-	 * If the user is in the queue, removes, and returns the appropriate chat effect.
-	 * If the user is not in the queue, does nothing, and returns the appropriate chat effect.
-	 * @param ball All of Firebot's given data
-	 * @param queue The fabled queue
-	 * @param user The user to remove from the queue
-	 * @returns The effect to return to Firebot
+	 * Remove the given user from the main queue, and report in chat.
+	 * If the user is not in the queue, nothing happens, and the absence is reported.
+	 * The case of the user does not matter.
+	 * @param user The user to remove from the main queue
+	 * @returns The chat effect to return to Firebot
 	 */
-	export function userRemovedFromQueueEffect(ball: Types.BallOfPower, queue: string[], user: string): Types.ChatMessageEffect {
+	removeUserFromQueueEffect(user: string): Types.ChatMessageEffect {
 		const
-			effect: Types.ChatMessageEffect = {
-				type: ball.effectType.CHAT,
-				message: ""
-			},
-			userIndex = Utils.userIndexInQueue(queue, user);
+			queue = this.queue,
+			effect = Utils.chatMessageEffect(),
+			userIndex = Utils.userIndexInArray(queue, user);
 
 		if (userIndex === -1) {
 			effect.message = `${user} wasn't in the queue`;
+			this.uncacheQueue();
 		} else {
-			effect.message = `${queue.splice(userIndex, 1)[0]} is no longer in the queue`;
+			user = queue.splice(userIndex, 1)[0];
+			effect.message = `${user} is no longer in the queue`;
 		}
 
 		return effect;
 	}
 
 	/**
-	 * Reports all the users in the array as chat messages, comma-separated. Since the size of this list is unbound, it can be many messages.
-	 * @param ball All of Firebot's given data
-	 * @param users The array of users to report
-	 * @param initialPrefix The part of the first message before the users. Result: `"<initialPrefix>: user1, user2, user3"`
-	 * @param subsequentPrefix The part of the additional messages before the users. Result: `"<subsequentPrefix>: user82, user83, user84"`
-	 * @returns The effects to return to Firebot
+	 * Remove the given user from the main queue, re-add at the end, and report the position in chat.
+	 * If the user is not in the queue, it's added anyway.
+	 * The case of the user does not matter, but it will persist if it was not found.
+	 * @param user The user to reposition in the main queue
+	 * @returns The chat effect to return to Firebot
 	 */
-	export function usersInListEffects(ball: Types.BallOfPower, users: string[], initialPrefix: string, subsequentPrefix: string): Types.ChatMessageEffect[] {
-		const effects: Types.ChatMessageEffect[] = [];
+	resetUserInQueueEffect(user: string): Types.ChatMessageEffect {
+		const
+			queue = this.queue,
+			userIndex = Utils.userIndexInArray(queue, user);
 
-		if (users.length === 0) {
-			return effects;
+		if (userIndex !== -1) {
+			user = queue.splice(userIndex, 1)[0];
 		}
 
-		let message = `${initialPrefix}: ${users.splice(0, 1)[0]}`,
+		queue.push(user);
+		return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length}`);
+	}
+
+	/**
+	 * Take some users from the front of the main queue, put them in the next-up queue, and report the next-up queue in chat.
+	 * If the count is not a positive integer, nothing happens, and nothing is reported.
+	 * This is aware of the chat message size limit of 500 characters, and splits the report across multiple messages if necessary.
+	 * @param count The number of users to move
+	 * @returns The chat effects to return to Firebot
+	 */
+	shiftSomeUsersToNextEffects(count: number): Types.ChatMessageEffect[] {
+		if (!Utils.isUsableNumber(count)) {
+			return [];
+		}
+
+		const
+			queue = this.queue,
+			next = this.next.queue,
+			effects: Types.ChatMessageEffect[] = [];
+
+		next.push(...queue.splice(0, count));
+
+		const users = Object.assign([], next);
+		let message = `Next ${next.length} in queue: ${users.splice(0, 1)[0]}`,
 			tempMessage = message;
 
 		while (users.length > 0) {
@@ -266,11 +421,8 @@ namespace Effects {
 
 			if (tempMessage.length > 500) {
 				// `tempMessage` is overfull, `message` is as big as it can be, but we have more users to report
-				effects.push({
-					type: ball.effectType.CHAT,
-					message
-				});
-				tempMessage = message = `${subsequentPrefix}: ${users.splice(0, 1)[0]}`;
+				effects.push(Utils.chatMessageEffect(message));
+				tempMessage = message = `Also: ${users.splice(0, 1)[0]}`;
 			} else {
 				message = tempMessage;
 				users.splice(0, 1);
@@ -278,217 +430,221 @@ namespace Effects {
 		}
 
 		// No more people, add the last chat message
-		effects.push({
-			type: ball.effectType.CHAT,
-			message
-		});
+		effects.push(Utils.chatMessageEffect(message));
 
 		return effects;
 	}
 
 	/**
-	 * Creates the effect to write a list of users to a file.
-	 * @param ball All of Firebot's given data
-	 * @param filepath The path of the file to be written
-	 * @param users The array of users to save
-	 * @returns The effect to return to Firebot
+	 * Take one user from the main queue, put them in the next-up queue, and report in chat.
+	 * If the user is not in the queue, nothing happens, and the absence is reported.
+	 * @param user The user to move
+	 * @returns The chat effect to return to Firebot
 	 */
-	export function persistUsersToFileEffect(ball: Types.BallOfPower, filepath: string, users: string[]): Types.BaseEffect {
-		return {
-			type: ball.effectType.TEXT_TO_FILE,
-			filepath,
-			writeMode: "replace",
-			text: JSON.stringify(users)
-		} as Types.WriteFileEffect;
+	shiftOneUserToNextEffects(user: string): Types.ChatMessageEffect {
+		const
+			queue = this.queue,
+			effect = Utils.chatMessageEffect(),
+			userIndex = Utils.userIndexInArray(queue, user);
+
+		if (userIndex === -1) {
+			effect.message = `${user} wasn't in the queue`;
+			this.uncacheQueue();
+		} else {
+			const next = this.next.queue;
+			user = queue.splice(userIndex, 1)[0];
+			next.push(user);
+			effect.message = `${user} is also up next`;
+		}
+
+		return effect;
 	}
 
 	/**
-	 * Creates the effects to restore the queue in the event of a problem.
-	 * @param ball All of Firebot's given data
-	 * @param options Any extra data to alter the effect
-	 * @returns The effects to return to Firebot
+	 * Take some users from the end of the next-up queue, put them at the front of the main queue, and report the next-up size in chat.
+	 * If the count is not a positive integer, nothing happens, and an appropriate message is reported.
+	 * @param count The number of users to move
+	 * @returns The chat effect to return to Firebot
 	 */
-	export function restoreQueueEffects(ball: Types.BallOfPower, options?: Types.QueueRestoreOptions): Types.BaseEffect[] {
-		const
-			user = options?.user,
-			userGiven = Utils.isString(user),
-			queue: string[] = userGiven ? [user] : [];
+	unshiftSomeUsersFromNextEffect(count: number): Types.ChatMessageEffect {
+		if (!Utils.isUsableNumber(count)) {
+			return Utils.chatMessageEffect("That's an unusable number");
+		}
 
-		return [
-			persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-			persistUsersToFileEffect(ball, ball.runRequest.parameters.next, []),
-			{
-				type: ball.effectType.CHAT,
-				message: "There was a problem with the queue, it is now " + (userGiven ? `just ${user}` : "empty")
-			} as Types.ChatMessageEffect
-		]
+		const
+			queue = this.queue,
+			next = this.next.queue,
+			initialQueueLength = queue.length;
+
+		if (count > next.length) {
+			count = next.length;
+		}
+		queue.unshift(...next.splice(next.length - count, count).filter(user => Utils.userIndexInArray(queue, user) === -1));
+		if (queue.length === initialQueueLength) {
+			this.uncacheQueue();
+		}
+		return Utils.chatMessageEffect(`There ${next.length === 1 ? "is" : "are"} now ${next.length} ${next.length === 1 ? "user" : "users"} next up`);
+	}
+
+	/**
+	 * Take one user from the next-up queue, put them at the front of the main queue, and report in chat.
+	 * If the user is not in the queue, nothing happens, and the absence is reported.
+	 * @param user The user to move
+	 * @returns The chat effect to return to Firebot
+	 */
+	unshiftOneUserFromNextEffect(user: string): Types.ChatMessageEffect {
+		const
+			queue = this.queue,
+			next = this.next.queue,
+			effect = Utils.chatMessageEffect(),
+			queueIndex = Utils.userIndexInArray(queue, user),
+			nextIndex = Utils.userIndexInArray(next, user);
+
+		if (nextIndex === -1) {
+			effect.message = `${user} wasn't up next`;
+			this.uncacheNext();
+			this.uncacheQueue();
+		} else if (queueIndex !== -1) {
+			user = queue[queueIndex];
+			next.splice(nextIndex, 1);
+			effect.message = `${user} is back in the queue at position ${queueIndex}`;
+			this.uncacheQueue();
+		} else {
+			user = next.splice(nextIndex, 1)[0];
+			queue.unshift(user);
+			effect.message = `${user} is now at the front of the queue`;
+		}
+
+		return effect;
 	}
 }
 
-namespace Actions {
-	interface Action {
-		effects: (ball: Types.BallOfPower, queue: string[]) => Types.BaseEffect[];
-		restore?: (ball: Types.BallOfPower) => Types.QueueRestoreOptions;
-	}
+/**
+ * The object that contains the command and argument dispatch actions
+ */
+const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
+	"!join": (manager: QueueManager) => {
+		const chatEffect = manager.addUserToQueueEffect(manager.sender);
+		
+		return [...manager.persistEffects(), chatEffect];
+	},
 
-	interface Actions {
-		[trigger: string]: Action;
-	}
+	"!leave": (manager: QueueManager) => {
+		const chatEffect = manager.removeUserFromQueueEffect(manager.sender);
 
-	/**
-	 * The object that contains the command and argument dispatch actions
-	 */
-	export const actions: Actions = {
-		"!join": {
-			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
-				// These effects are built in this order on purpose, because the queue mutates.
-				const
-					sender = Utils.fetchSender(ball),
-					chatEffect = Effects.userAddedToQueueEffect(ball, queue, sender);
+		return [...manager.persistEffects(), chatEffect];
+	},
 
-				return [
-					Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-					chatEffect
-				];
-			},
-			restore: function (ball: Types.BallOfPower): Types.QueueRestoreOptions {
-				return {
-					user: Utils.fetchSender(ball)
-				};
-			}
-		},
+	"!rejoin": (manager: QueueManager) => {
+		const chatEffect = manager.resetUserInQueueEffect(manager.sender);
 
-		"!leave": {
-			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
-				// These effects are built in this order on purpose, because the queue mutates.
-				const
-					sender = Utils.fetchSender(ball),
-					chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender);
+		return [...manager.persistEffects(), chatEffect];
+	},
 
-				return [
-					Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-					chatEffect
-				];
-			}
-		},
+	"!queue": (manager: QueueManager) => {
+		const
+			verb = manager.commandArgument(0),
+			effects: Types.BaseEffect[] = [];
 
-		"!rejoin": {
-			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
-				// These effects are built in this order on purpose, because the queue mutates.
-				const
-					sender = Utils.fetchSender(ball),
-					leaveEffect = Effects.userRemovedFromQueueEffect(ball, queue, sender),
-					joinEffect = Effects.userAddedToQueueEffect(ball, queue, sender);
+		if (Utils.isString(verb)) {
+			switch (verb.trim().toLowerCase()) {
+				case "next": {
+					const nextArg = manager.commandArgument(1);
 
-				return [
-					Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-					leaveEffect,
-					joinEffect
-				];
-			},
-			restore: function (ball: Types.BallOfPower): Types.QueueRestoreOptions {
-				return {
-					user: Utils.fetchSender(ball)
-				};
-			}
-		},
+					if (Utils.isString(nextArg)) {
+						const nextCount = Number(nextArg.trim());
 
-		"!queue": {
-			effects: function (ball: Types.BallOfPower, queue: string[]): Types.BaseEffect[] {
-				const
-					verb = ball.runRequest.command.args[0].trim().toLowerCase(),
-					effects: Types.BaseEffect[] = [];
-
-				switch (verb) {
-					case "remove": {
-						const user = Utils.hopefulUserName(ball.runRequest.command.args[1]);
-
-						if (user !== null) {
-							// These effects are built in this order on purpose, because the queue mutates.
-							const chatEffect = Effects.userRemovedFromQueueEffect(ball, queue, user);
-							effects.push(
-								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-								chatEffect
-							);
-						}
-						break;
-					}
-					case "next": {
-						const nextCount = Number(ball.runRequest.command.args[1].trim());
-
-						if (!isNaN(nextCount)) {
-							const nextUp = queue.splice(0, nextCount);
-							effects.push(
-								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.next, nextUp),
-								...Effects.usersInListEffects(ball, nextUp, `Next ${nextCount} in queue`, "Also")
-							);
-						}
-						break;
-					}
-					case "shift": {
-						const shiftCount = Number(ball.runRequest.command.args[1].trim());
-
-						if (!isNaN(shiftCount)) {
-							const
-								shiftUsers = queue.splice(0, shiftCount),
-								nextUp = Utils.loadUserArray(ball, ball.runRequest.parameters.next);
-
-							nextUp.push(...shiftUsers);
-							effects.push(
-								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.queue, queue),
-								Effects.persistUsersToFileEffect(ball, ball.runRequest.parameters.next, nextUp),
-								...Effects.usersInListEffects(ball, nextUp, `Next ${nextUp.length} in queue`, "Also")
-							);
+						if (Utils.isUsableNumber(nextCount)) {
+							manager.next.queue.splice(0, manager.next.queue.length);
+							const chatEffects = manager.shiftSomeUsersToNextEffects(nextCount);
+							effects.push(...manager.persistEffects());
+							effects.push(...chatEffects);
 						}
 					}
-					default: {
-						ball.runRequest.modules.logger.warn("!queue verb not handled: " + verb);
-					}
+					break;
 				}
+				case "remove": {
+					const user = Utils.hopefulUserName(manager.commandArgument(1));
 
-				return effects;
+					if (user !== null) {
+						const chatEffect = manager.removeUserFromQueueEffect(user);
+						effects.push(...manager.persistEffects());
+						effects.push(chatEffect);
+					}
+					break;
+				}
+				case "shift": {
+					const shiftArg = manager.commandArgument(1);
+
+					if (Utils.isString(shiftArg)) {
+						const shiftCount = Number(shiftArg.trim());
+
+						if (isNaN(shiftCount)) {
+							const user = Utils.hopefulUserName(shiftArg);
+
+							if (user !== null) {
+								const chatEffect = manager.shiftOneUserToNextEffects(user);
+								effects.push(...manager.persistEffects());
+								effects.push(chatEffect);
+							}
+						} else {
+							const chatEffects = manager.shiftSomeUsersToNextEffects(shiftCount);
+							effects.push(...manager.persistEffects());
+							effects.push(...chatEffects);
+						}
+					}
+					break;
+				}
+				case "unshift": {
+					const unshiftArg = manager.commandArgument(1);
+
+					if (Utils.isString(unshiftArg)) {
+						const unshiftCount = Number(unshiftArg.trim());
+
+						if (isNaN(unshiftCount)) {
+							const user = Utils.hopefulUserName(unshiftArg);
+
+							if (user !== null) {
+								const chatEffect = manager.unshiftOneUserFromNextEffect(user);
+								effects.push(...manager.persistEffects());
+								effects.push(chatEffect);
+							}
+						} else {
+							const chatEffect = manager.unshiftSomeUsersFromNextEffect(unshiftCount);
+							effects.push(...manager.persistEffects());
+							effects.push(chatEffect);
+						}
+					}
+					break;
+				}
+				default: {
+					manager.logWarn("!queue verb not handled: " + verb);
+					break;
+				}
 			}
 		}
-	};
-}
 
-declare const EffectType: Types.EffectTypeType;
+		return effects;
+	}
+};
 
 /**
  * The main dispatch of the script.
- * @param ball All of Firebot's given data
+ * @param runRequest The data given by Firebot
  * @returns The effects to return to Firebot
  */
-function handle(ball: Types.BallOfPower): Types.BaseEffect[] {
-	const trigger = ball.runRequest.command.trigger;
+function handle(runRequest: Types.RunRequest): Types.BaseEffect[] {
+	const
+		manager = new QueueManager(runRequest),
+		trigger = manager.trigger;
 
 	let effects: Types.BaseEffect[] = [];
 
-	if (trigger in Actions.actions) {
-		ball.runRequest.modules.logger.debug("Acting on the trigger: " + trigger);
-		const action = Actions.actions[trigger];
-
-		let queue: string[] = [],
-			isQueueValid = true;
-
-		try {
-			queue = Utils.loadUserArray(ball, ball.runRequest.parameters.queue);
-		} catch {
-			isQueueValid = false;
-		}
-
-		if (isQueueValid) {
-			effects = action.effects(ball, queue);
-		} else {
-			if ("restore" in action) {
-				effects = Effects.restoreQueueEffects(ball, action.restore(ball));
-			} else {
-				effects = Effects.restoreQueueEffects(ball);
-			}
-		}
+	if (trigger in actions) {
+		manager.logDebug("Acting on the trigger: " + trigger);
+		effects.push(...actions[trigger](manager))
 	} else {
-		ball.runRequest.modules.logger.warn("The expected trigger was not actionable: " + trigger);
+		manager.logWarn("The expected trigger was not actionable: " + trigger);
 	}
 
 	return effects;
@@ -497,16 +653,16 @@ function handle(ball: Types.BallOfPower): Types.BaseEffect[] {
 /**
  * Firebot script parameters function
  */
-export function getDefaultParameters(): Promise<any> {
+export function getDefaultParameters(): Promise<Types.ScriptParameterDefinition> {
 	return new Promise(resolve => {
 		resolve({
 			queue: {
 				type: "filepath",
-				description: "The .json file that contains the queue"
+				description: "The .json file that contains the main queue"
 			},
 			next: {
 				type: "filepath",
-				description: "The .json file that holds the users grabbed by !queue next X"
+				description: "The .json file that contains the next-up queue"
 			}
 		});
 	});
@@ -516,19 +672,14 @@ export function getDefaultParameters(): Promise<any> {
  * Firebot script run function
  * @param runRequest The data about the script run, provided by Firebot
  */
-export function run(runRequest: Types.RunRequest): Promise<any> {
-	const
-		ball: Types.BallOfPower = {
-			runRequest,
-			effectType: EffectType
-		},
-		result: Types.RunResults = {
-			success: true,
-			effects: []
-		};
+export function run(runRequest: Types.RunRequest): Promise<Types.RunResult> {
+	const result: Types.RunResult = {
+		success: true,
+		effects: []
+	};
 
 	try {
-		result.effects = handle(ball);
+		result.effects = handle(runRequest);
 	} catch (e) {
 		result.success = false;
 		result.errorMessage = e.toString();
