@@ -327,7 +327,7 @@ class QueueManager {
         else if (queueIndex !== -1) {
             user = queue[queueIndex];
             next.splice(nextIndex, 1);
-            effect.message = `${user} is back in the queue at position ${queueIndex}`;
+            effect.message = `${user} is back in the queue at position ${queueIndex + 1}`;
             this.uncacheQueue();
         }
         else {
@@ -363,7 +363,7 @@ const actions = {
                     if (Utils.isString(nextArg)) {
                         const nextCount = Number(nextArg.trim());
                         if (Utils.isUsableNumber(nextCount)) {
-                            manager.next.queue.splice(0, manager.next.queue.length);
+                            manager.next.queue = [];
                             const chatEffects = manager.shiftSomeUsersToNextEffects(nextCount);
                             effects.push(...manager.persistEffects());
                             effects.push(...chatEffects);
