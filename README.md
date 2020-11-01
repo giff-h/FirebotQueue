@@ -36,6 +36,8 @@ Two upcoming Firebot features will affect this project:
 	- The bot always says in chat: `TwitchUser is now at the end of the queue at position 3`.
 - `!queue`
 	- This command takes arguments.
+	- `list` - Usage: `!queue list`
+		- Lists the users in the main queue. The bot says in chat: `3 users in the queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `next` - Usage: `!queue next 3`
 		- If this is a number, that many users are grabbed from the front of the main queue, the next-up queue **becomes** them, and the bot says in chat: `Next 3 in queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `remove` - Usage: `!queue remove NotJeffBezos`
