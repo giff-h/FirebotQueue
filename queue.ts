@@ -189,15 +189,12 @@ namespace Utils {
 }
 
 class QueueManager {
-	readonly effects: Types.BaseEffect[];  // The effects to return to Firebot
 	readonly queueCache: Record<string, any>;  // The cache is also used to know what files to persist at the end
 	readonly runRequest: Types.RunRequest;  // The data given by Firebot
 
 	constructor(runRequest: Types.RunRequest) {
-		this.runRequest = runRequest;
-
-		this.effects = [];
 		this.queueCache = {};
+		this.runRequest = runRequest;
 	}
 
 	logDebug(message: any): void {
@@ -325,6 +322,43 @@ class QueueManager {
 	}
 
 	/**
+	 * Report the users in the list in chat. The message(s) will be the following format:
+	 * "[predicate]: user1, user2, user3, ..."
+	 * "Also: user52, user53, ..."
+	 * This is aware of the chat message size limit of 500 characters, and splits the report across multiple messages if necessary.
+	 * This is destructive to the given list, so send a copy if necessary.
+	 * @param users The list of users to report
+	 * @param predicate What to say before listing the users
+	 */
+	reportUsersInListEffects(users: string[], predicate: string): Types.ChatMessageEffect[] {
+		if (users.length === 0) {
+			return [];
+		}
+
+		const effects: Types.ChatMessageEffect[] = [];
+		let message = `${predicate}: ${users.splice(0, 1)[0]}`,
+			tempMessage = message;
+
+		while (users.length > 0) {
+			tempMessage += `, ${users[0]}`;
+
+			if (tempMessage.length > 500) {
+				// `tempMessage` is overfull, `message` is as big as it can be, but we have more users to report
+				effects.push(Utils.chatMessageEffect(message));
+				tempMessage = message = `Also: ${users.splice(0, 1)[0]}`;
+			} else {
+				message = tempMessage;
+				users.splice(0, 1);
+			}
+		}
+
+		// No more people, add the last chat message
+		effects.push(Utils.chatMessageEffect(message));
+
+		return effects;
+	}
+
+	/**
 	 * Add the given user to the main queue, and report the position in chat.
 	 * If the user is already in the queue, nothing happens, but the position is still reported.
 	 * The case of the user does not matter, but will persist if it was not found.
@@ -396,7 +430,6 @@ class QueueManager {
 	/**
 	 * Take some users from the front of the main queue, put them in the next-up queue, and report the next-up queue in chat.
 	 * If the count is not a positive integer, nothing happens, and nothing is reported.
-	 * This is aware of the chat message size limit of 500 characters, and splits the report across multiple messages if necessary.
 	 * @param count The number of users to move
 	 * @returns The chat effects to return to Firebot
 	 */
@@ -413,26 +446,7 @@ class QueueManager {
 		next.push(...queue.splice(0, count));
 
 		const users = Object.assign([], next);
-		let message = `Next ${next.length} in queue: ${users.splice(0, 1)[0]}`,
-			tempMessage = message;
-
-		while (users.length > 0) {
-			tempMessage += `, ${users[0]}`;
-
-			if (tempMessage.length > 500) {
-				// `tempMessage` is overfull, `message` is as big as it can be, but we have more users to report
-				effects.push(Utils.chatMessageEffect(message));
-				tempMessage = message = `Also: ${users.splice(0, 1)[0]}`;
-			} else {
-				message = tempMessage;
-				users.splice(0, 1);
-			}
-		}
-
-		// No more people, add the last chat message
-		effects.push(Utils.chatMessageEffect(message));
-
-		return effects;
+		return this.reportUsersInListEffects(users, `Next ${users.length} in queue`);
 	}
 
 	/**
@@ -548,6 +562,15 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 
 		if (Utils.isString(verb)) {
 			switch (verb.trim().toLowerCase()) {
+				case "list": {
+					const
+						users = Object.assign([], manager.queue),
+						singular = users.length === 1,
+						predicate = `${users.length} ${singular ? "user" : "users"} in the queue`;
+
+					manager.uncacheQueue();
+					effects.push(...manager.reportUsersInListEffects(users, predicate));
+				}
 				case "next": {
 					const nextArg = manager.commandArgument(1);
 
