@@ -16,9 +16,9 @@ Two upcoming Firebot features will affect this project:
 - Download `queue.js`, and put it in the Firebot scripts folder.
 	- On Windows this is `%APPDATA%\Firebot\v5\profiles\Main Profile\scripts`.
 	- There is a "scripts folder" link in the Run Custom Script dialogue view in the Firebot trigger setup, to help find it.
-- Create two empty text files, one for the main queue, one for the next-up queue.
-	- It's standard to give them a `.json` extension, not `.txt`, but this doesn't really matter.
-	- It makes sense for them to live with `queue.js`, but again, this doesn't matter.
+- Create an empty text file for the queue.
+	- It's standard to give it a `.json` extension, not `.txt`, but this doesn't really matter.
+	- It makes sense for it to live with `queue.js`, but again, this doesn't matter.
 - Add triggers for the following 4 main commands, and have them run `queue.js`.
 	- Trigger conditions for the arguments are not necessary, the script does this.
 
@@ -26,20 +26,23 @@ Two upcoming Firebot features will affect this project:
 - These _are_ hard-coded for the time being.
 - `!join`
 	- The sender is added to the end of the main queue, and the bot says in chat: `TwitchUser added to the queue at position 3`.
-	- If the sender is already in the main queue, they are **not** added twice, and the bot says in chat: `TwitchUser is already in the queue at position 3`.
+	- If the sender is already in the main queue, or the skipped priority queue, they are **not** added twice, and the bot says in chat: `TwitchUser is already in the queue at position 3`.
 - `!leave`
-	- The sender is removed from the main queue, and the bot says in chat: `TwitchUser is no longer in the queue`.
-	- If the sender is not in the main queue, the bot says in chat: `TwitchUser wasn't in the queue`.
+	- The sender is removed from the skipped priority queue or the main queue, and the bot says in chat: `TwitchUser is no longer in the queue`.
+	- If the sender is not in either queue, the bot says in chat: `TwitchUser wasn't in the queue`.
 - `!rejoin`
-	- The sender is removed from the main queue, and put on the end.
-	- If the sender is not in the main queue, they're still added.
+	- The sender is removed from the skipped priority queue or the main queue, and put on the end of the main queue.
+	- If the sender is not in either queue, they're still added.
 	- The bot always says in chat: `TwitchUser is now at the end of the queue at position 3`.
+- `!skip`
+	- The sender is removed from the next-up queue, added to the end of the skipped priority queue, one user is shifted from the main queue to the next-up queue to replace them, and the bot says in chat: `Skipping TwitchUser` followed by the normal `!queue shift 1` response
+	- If the sender is not in the next-up queue, the bot says in chat: `TwitchUser wasn't up next`.
 - `!queue`
 	- This command takes arguments.
 	- `list` - Usage: `!queue list`
 		- Lists the users in the main queue. The bot says in chat: `3 users in the queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `next` - Usage: `!queue next 3`
-		- If this is a number, that many users are grabbed from the front of the main queue, the next-up queue **becomes** them, and the bot says in chat: `Next 3 in queue: hamstap85, NotJeffBezos, TwitchUser`.
+		- If this is a number, that many users are grabbed first from the front of the skipped priority queue, then from the front of the main queue if necessary, the next-up queue **becomes** them, and the bot says in chat: `Next 3 in queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `remove` - Usage: `!queue remove NotJeffBezos`
 		- The given user is removed from the main queue, and the bot says in chat: `NotJeffBezos is no longer in the queue`.
 		- If the given user is not in the main queue, the bot says in chat: `NotJeffBezos wasn't in the queue`.
@@ -53,6 +56,10 @@ Two upcoming Firebot features will affect this project:
 		- If this is a username, that user is grabbed from the next up queue, added to the front of the queue, and the bot says in chat: `TwitchUser is now at the front of the queue`.
 		- If the given user is not in the next up queue, they are **not** added to the main queue, and the bot says in chat: `TwitchUser wasn't up next`.
 		- If the given user is already in the main queue, they are **not** added twice, and the bot says in chat: `TwitchUser is back in the queue at position 3`.
+	- `on` - Usage: `!queue on`
+		- Turns the queue on so everything above can be used. The bot says in chat: `The queue is on`.
+	- `off` - Usage: `!queue off`
+		- Turns the queue off so everything above except for `on` cannot be used. The bot says in chat: `The queue is off`.
 
 # Usage hints
 - Given usernames in command arguments are case insensitive, and `@` prefix is allowed. The names will appear in the queues as their display names.

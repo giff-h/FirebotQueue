@@ -68,7 +68,6 @@ namespace Types {
 
 	interface ScriptParameters {
 		queue: string;
-		next: string;
 	}
 
 	export interface RunRequest {
@@ -101,9 +100,12 @@ namespace Types {
 
 	/* Misc */
 
-	export interface ComplexQueue {
-		queue: string[];
-		code?: string;
+	export interface Queue {
+		mainQueue: string[];
+		nextUpQueue: string[];
+		skippedQueue: string[];
+		enabled: boolean;
+		code: string;
 	}
 
 	export type ScriptParameterDefinition = {
@@ -172,7 +174,13 @@ namespace Utils {
 	 * @param user The user to find in the queue
 	 */
 	export function userIndexInArray(users: string[], user: string): number {
-		return users.map(u => u.toUpperCase()).indexOf(user.toUpperCase());
+		user = user.toUpperCase();
+		for (let i = 0; i < users.length; i++) {
+			if (users[i].toUpperCase() === user) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	/**
@@ -192,6 +200,16 @@ class QueueManager {
 	readonly queueCache: Record<string, any>;  // The cache is also used to know what files to persist at the end
 	readonly runRequest: Types.RunRequest;  // The data given by Firebot
 
+	static get defaultQueue(): Types.Queue {
+		return {
+			mainQueue: [],
+			nextUpQueue: [],
+			skippedQueue: [],
+			enabled: true,
+			code: ""
+		};
+	}
+
 	constructor(runRequest: Types.RunRequest) {
 		this.queueCache = {};
 		this.runRequest = runRequest;
@@ -208,17 +226,10 @@ class QueueManager {
 	}
 
 	/**
-	 * If the main queue was loaded, and not changed, use this to prevent it from being unnecessarily rewritten.
+	 * If the file was loaded, and not changed, use this to prevent it from being unnecessarily rewritten.
 	 */
-	uncacheQueue(): void {
+	uncacheData(): void {
 		delete this.queueCache[this.runRequest.parameters.queue];
-	}
-
-	/**
-	 * If the next-up queue was loaded, and not changed, use this to prevent it from being unnecessarily rewritten.
-	 */
-	uncacheNext(): void {
-		delete this.queueCache[this.runRequest.parameters.next];
 	}
 
 	/**
@@ -246,11 +257,14 @@ class QueueManager {
 	 * @param default_data The value to use in the event of any problem
 	 * @param validator The function to validate the data, might receive any valid JSON.parse result
 	 */
-	loadDataFromFile<T>(filepath: string, default_data: T, validator: (data: unknown) => data is T): T {
+	loadQueue(): Types.Queue {
+		const filepath = this.runRequest.parameters.queue;
+
 		if (filepath in this.queueCache) {
 			return this.queueCache[filepath];
 		} else {
-			let data = default_data;
+			const defaultData = QueueManager.defaultQueue;
+			let data = defaultData;
 
 			try {
 				data = JSON.parse(this.runRequest.modules.fs.readFileSync(filepath, "utf-8"));
@@ -258,9 +272,26 @@ class QueueManager {
 				this.logWarn("There was an error reading from the file");
 			}
 
-			if (!validator(data)) {
-				this.logWarn("The file structure was not correct");
-				data = default_data;
+			if (typeof data !== "object" || Array.isArray(data) || data === null) {
+				data = defaultData;
+			}
+
+			if (!(Object.prototype.hasOwnProperty.call(data, "mainQueue") && Utils.isValidQueue(data.mainQueue))) {
+				data.mainQueue = defaultData.mainQueue;
+			}
+			if (!(Object.prototype.hasOwnProperty.call(data, "nextUpQueue") && Utils.isValidQueue(data.nextUpQueue))) {
+				data.nextUpQueue = defaultData.nextUpQueue;
+			}
+			if (!(Object.prototype.hasOwnProperty.call(data, "skippedQueue") && Utils.isValidQueue(data.skippedQueue))) {
+				data.skippedQueue = defaultData.skippedQueue;
+			}
+			if (!(Object.prototype.hasOwnProperty.call(data, "code") && Utils.isString(data.code))) {
+				data.code = defaultData.code;
+			}
+			if (Object.prototype.hasOwnProperty.call(data, "enabled")) {
+				data.enabled = !!data.enabled;  // double-negating forces to a boolean while maintaining "truthiness", 0 "" null and undefined are falsy values
+			} else {
+				data.enabled = defaultData.enabled;
 			}
 
 			this.queueCache[filepath] = data;
@@ -271,30 +302,31 @@ class QueueManager {
 	/**
 	 * The main queue
 	 */
-	get queue(): string[] {
-		const
-			default_data: string[] = [],
-			validator = (data: unknown) => Utils.isValidQueue(data);
-
-		return this.loadDataFromFile(this.runRequest.parameters.queue, default_data, validator as (data: unknown) => data is string[]);
+	get mainQueue(): string[] {
+		return this.loadQueue().mainQueue;
 	}
 
 	/**
 	 * The next-up queue
 	 */
-	get next(): Types.ComplexQueue {
-		const
-			default_data: Types.ComplexQueue = { queue: [], code: "" },
-			validator = (data: Types.ComplexQueue) => {
-				if (typeof data !== "object" || !Utils.isValidQueue(data.queue)) {
-					return false;
-				} else if (!Utils.isString(data.code)) {
-					data.code = "";
-				}
-				return true;
-			};
+	get nextUpQueue(): string[] {
+		return this.loadQueue().nextUpQueue;
+	}
 
-		return this.loadDataFromFile(this.runRequest.parameters.next, default_data, validator as (data: unknown) => data is Types.ComplexQueue);
+	/**
+	 * The queue of users who chose to skip
+	 */
+	get skippedQueue(): string[] {
+		return this.loadQueue().skippedQueue;
+	}
+
+	get isEnabled(): boolean {
+		return this.loadQueue().enabled;
+	}
+
+	set enabled(enabled: boolean) {
+		const data = this.loadQueue();
+		data.enabled = enabled;
 	}
 
 	/**
@@ -367,24 +399,30 @@ class QueueManager {
 	 */
 	addUserToQueueEffect(user: string): Types.ChatMessageEffect {
 		const
-			queue = this.queue,
 			effect = Utils.chatMessageEffect(),
-			userIndex = Utils.userIndexInArray(queue, user);
+			queue = this.mainQueue,
+			skip = this.skippedQueue,
+			queueIndex = Utils.userIndexInArray(queue, user),
+			skipIndex = Utils.userIndexInArray(skip, user);
 
-		if (userIndex === -1) {
+		if (skipIndex !== -1) {
+			user = skip[skipIndex];
+			effect.message = `${user} is already in the skipped priority queue at position ${skipIndex + 1}`;
+			this.uncacheData();
+		} else if (queueIndex !== -1) {
+			user = queue[queueIndex];
+			effect.message = `${user} is already in the queue at position ${queueIndex + 1}`;
+			this.uncacheData();
+		} else {
 			queue.push(user);
 			effect.message = `${user} added to the queue at position ${queue.length}`;
-		} else {
-			user = queue[userIndex];
-			effect.message = `${user} is already in the queue at position ${userIndex + 1}`;
-			this.uncacheQueue();
 		}
 
 		return effect;
 	}
 
 	/**
-	 * Remove the given user from the main queue, and report in chat.
+	 * Remove the given user from the skipped priority queue or the main queue, and report in chat.
 	 * If the user is not in the queue, nothing happens, and the absence is reported.
 	 * The case of the user does not matter.
 	 * @param user The user to remove from the main queue
@@ -392,15 +430,17 @@ class QueueManager {
 	 */
 	removeUserFromQueueEffect(user: string): Types.ChatMessageEffect {
 		const
-			queue = this.queue,
 			effect = Utils.chatMessageEffect(),
-			userIndex = Utils.userIndexInArray(queue, user);
+			queue = this.mainQueue,
+			skip = this.skippedQueue,
+			queueIndex = Utils.userIndexInArray(queue, user),
+			skipIndex = Utils.userIndexInArray(skip, user);
 
-		if (userIndex === -1) {
+		if (queueIndex === -1 && skipIndex === -1) {
 			effect.message = `${user} wasn't in the queue`;
-			this.uncacheQueue();
+			this.uncacheData();
 		} else {
-			user = queue.splice(userIndex, 1)[0];
+			user = skipIndex === -1 ? queue.splice(queueIndex, 1)[0] : skip.splice(skipIndex, 1)[0];
 			effect.message = `${user} is no longer in the queue`;
 		}
 
@@ -416,34 +456,47 @@ class QueueManager {
 	 */
 	resetUserInQueueEffect(user: string): Types.ChatMessageEffect {
 		const
-			queue = this.queue,
-			userIndex = Utils.userIndexInArray(queue, user);
+			queue = this.mainQueue,
+			skip = this.skippedQueue,
+			queueIndex = Utils.userIndexInArray(queue, user),
+			skipIndex = Utils.userIndexInArray(skip, user);
 
-		if (userIndex !== -1) {
-			user = queue.splice(userIndex, 1)[0];
-		}
-
+		user = skipIndex === -1 ? queue.splice(queueIndex, 1)[0] : skip.splice(skipIndex, 1)[0];
 		queue.push(user);
 		return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length}`);
 	}
 
 	/**
-	 * Take some users from the front of the main queue, put them in the next-up queue, and report the next-up queue in chat.
+	 * Take some users from the front of the skipped priority queue then the main queue, put them in the next-up queue, and report the next-up queue in chat.
+	 * If `skippedFirst` is false, the skipped priority queue is not used.
 	 * If the count is not a positive integer, nothing happens, and nothing is reported.
 	 * @param count The number of users to move
+	 * @param skippedFirst Look in the skipped priority queue first
 	 * @returns The chat effects to return to Firebot
 	 */
-	shiftSomeUsersToNextEffects(count: number): Types.ChatMessageEffect[] {
+	shiftSomeUsersToNextEffects(count: number, skippedFirst = true): Types.ChatMessageEffect[] {
 		if (!Utils.isUsableNumber(count)) {
 			return [];
 		}
 
+		let usersShifted = 0;
 		const
-			queue = this.queue,
-			next = this.next.queue,
-			effects: Types.ChatMessageEffect[] = [];
+			next = this.nextUpQueue,
+			initialLength = next.length;
 
-		next.push(...queue.splice(0, count));
+		if (skippedFirst) {
+			const skip = this.skippedQueue;
+
+			if (skip.length !== 0) {
+				next.push(...skip.splice(0, count).filter(user => Utils.userIndexInArray(next, user) === -1));
+				usersShifted = next.length - initialLength;
+			}
+		}
+
+		if (usersShifted < count) {
+			const queue = this.mainQueue;
+			next.push(...queue.splice(0, count - usersShifted).filter(user => Utils.userIndexInArray(next, user) === -1));
+		}
 
 		const users = Object.assign([], next);
 		return this.reportUsersInListEffects(users, `Next ${users.length} in queue`);
@@ -457,16 +510,18 @@ class QueueManager {
 	 */
 	shiftOneUserToNextEffects(user: string): Types.ChatMessageEffect {
 		const
-			queue = this.queue,
 			effect = Utils.chatMessageEffect(),
-			userIndex = Utils.userIndexInArray(queue, user);
+			queue = this.mainQueue,
+			skip = this.skippedQueue,
+			queueIndex = Utils.userIndexInArray(queue, user),
+			skipIndex = Utils.userIndexInArray(skip, user);
 
-		if (userIndex === -1) {
-			effect.message = `${user} wasn't in the queue`;
-			this.uncacheQueue();
+		if (skipIndex === -1 && queueIndex === -1) {
+			effect.message = `${user} wasn't in a queue`;
+			this.uncacheData();
 		} else {
-			const next = this.next.queue;
-			user = queue.splice(userIndex, 1)[0];
+			const next = this.nextUpQueue;
+			user = skipIndex === -1 ? queue.splice(queueIndex, 1)[0] : skip.splice(skipIndex, 1)[0];
 			next.push(user);
 			effect.message = `${user} is also up next`;
 		}
@@ -486,17 +541,13 @@ class QueueManager {
 		}
 
 		const
-			queue = this.queue,
-			next = this.next.queue,
-			initialQueueLength = queue.length;
+			queue = this.mainQueue,
+			next = this.nextUpQueue;
 
 		if (count > next.length) {
 			count = next.length;
 		}
 		queue.unshift(...next.splice(next.length - count, count).filter(user => Utils.userIndexInArray(queue, user) === -1));
-		if (queue.length === initialQueueLength) {
-			this.uncacheQueue();
-		}
 		return Utils.chatMessageEffect(`There ${next.length === 1 ? "is" : "are"} now ${next.length} ${next.length === 1 ? "user" : "users"} next up`);
 	}
 
@@ -508,21 +559,19 @@ class QueueManager {
 	 */
 	unshiftOneUserFromNextEffect(user: string): Types.ChatMessageEffect {
 		const
-			queue = this.queue,
-			next = this.next.queue,
 			effect = Utils.chatMessageEffect(),
+			queue = this.mainQueue,
+			next = this.nextUpQueue,
 			queueIndex = Utils.userIndexInArray(queue, user),
 			nextIndex = Utils.userIndexInArray(next, user);
 
 		if (nextIndex === -1) {
 			effect.message = `${user} wasn't up next`;
-			this.uncacheNext();
-			this.uncacheQueue();
+			this.uncacheData();
 		} else if (queueIndex !== -1) {
 			user = queue[queueIndex];
 			next.splice(nextIndex, 1);
 			effect.message = `${user} is back in the queue at position ${queueIndex + 1}`;
-			this.uncacheQueue();
 		} else {
 			user = next.splice(nextIndex, 1)[0];
 			queue.unshift(user);
@@ -531,6 +580,32 @@ class QueueManager {
 
 		return effect;
 	}
+
+	/**
+	 * Take one user from the next-up queue, put them at the end of the skipped priority queue, shift one user from the main queue to replace, and report in chat.
+	 * If the user is not in the queue, nothing happens, and the absence is reported.
+	 * @param user The user to skip
+	 * @returns The chat effects to return to Firebot
+	 */
+	skipUser(user: string): Types.ChatMessageEffect[] {
+		const
+			effects: Types.ChatMessageEffect[] = [],
+			next = this.nextUpQueue,
+			skip = this.skippedQueue,
+			nextIndex = Utils.userIndexInArray(next, user);
+
+		if (nextIndex === -1) {
+			effects.push(Utils.chatMessageEffect(`${user} wasn't up next`));
+			this.uncacheData();
+		} else {
+			user = next.splice(nextIndex, 1)[0];
+			skip.push(user);
+			effects.push(Utils.chatMessageEffect(`Skipping ${user}`));
+			effects.push(...this.shiftSomeUsersToNextEffects(1, false));
+		}
+
+		return effects;
+	}
 }
 
 /**
@@ -538,21 +613,35 @@ class QueueManager {
  */
 const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 	"!join": (manager: QueueManager) => {
+		if (!manager.isEnabled) return [];
+
 		const chatEffect = manager.addUserToQueueEffect(manager.sender);
-		
+
 		return [...manager.persistEffects(), chatEffect];
 	},
 
 	"!leave": (manager: QueueManager) => {
+		if (!manager.isEnabled) return [];
+
 		const chatEffect = manager.removeUserFromQueueEffect(manager.sender);
 
 		return [...manager.persistEffects(), chatEffect];
 	},
 
 	"!rejoin": (manager: QueueManager) => {
+		if (!manager.isEnabled) return [];
+
 		const chatEffect = manager.resetUserInQueueEffect(manager.sender);
 
 		return [...manager.persistEffects(), chatEffect];
+	},
+
+	"!skip": (manager: QueueManager) => {
+		if (!manager.isEnabled) return [];
+
+		const chatEffects = manager.skipUser(manager.sender);
+
+		return [...manager.persistEffects(), ...chatEffects];
 	},
 
 	"!queue": (manager: QueueManager) => {
@@ -563,22 +652,26 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 		if (Utils.isString(verb)) {
 			switch (verb.trim().toLowerCase()) {
 				case "list": {
+					if (!manager.isEnabled) return [];
+
 					const
-						users = Object.assign([], manager.queue),
+						users = Object.assign([], manager.mainQueue),
 						singular = users.length === 1,
 						predicate = `${users.length} ${singular ? "user" : "users"} in the queue`;
 
-					manager.uncacheQueue();
+					manager.uncacheData();
 					effects.push(...manager.reportUsersInListEffects(users, predicate));
 				}
 				case "next": {
+					if (!manager.isEnabled) return [];
+
 					const nextArg = manager.commandArgument(1);
 
 					if (Utils.isString(nextArg)) {
 						const nextCount = Number(nextArg.trim());
 
 						if (Utils.isUsableNumber(nextCount)) {
-							manager.next.queue = [];
+							manager.nextUpQueue.splice(0);
 							const chatEffects = manager.shiftSomeUsersToNextEffects(nextCount);
 							effects.push(...manager.persistEffects());
 							effects.push(...chatEffects);
@@ -587,6 +680,8 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "remove": {
+					if (!manager.isEnabled) return [];
+
 					const user = Utils.hopefulUserName(manager.commandArgument(1));
 
 					if (user !== null) {
@@ -597,6 +692,8 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "shift": {
+					if (!manager.isEnabled) return [];
+
 					const shiftArg = manager.commandArgument(1);
 
 					if (Utils.isString(shiftArg)) {
@@ -611,7 +708,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 								effects.push(chatEffect);
 							}
 						} else {
-							const chatEffects = manager.shiftSomeUsersToNextEffects(shiftCount);
+							const chatEffects = manager.shiftSomeUsersToNextEffects(shiftCount, false);
 							effects.push(...manager.persistEffects());
 							effects.push(...chatEffects);
 						}
@@ -619,6 +716,8 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "unshift": {
+					if (!manager.isEnabled) return [];
+
 					const unshiftArg = manager.commandArgument(1);
 
 					if (Utils.isString(unshiftArg)) {
@@ -638,6 +737,18 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 							effects.push(chatEffect);
 						}
 					}
+					break;
+				}
+				case "on": {
+					manager.enabled = true;
+					effects.push(...manager.persistEffects());
+					effects.push(Utils.chatMessageEffect("The queue is on"));
+					break;
+				}
+				case "off": {
+					manager.enabled = false;
+					effects.push(...manager.persistEffects());
+					effects.push(Utils.chatMessageEffect("The queue is off"));
 					break;
 				}
 				default: {
@@ -681,11 +792,7 @@ export function getDefaultParameters(): Promise<Types.ScriptParameterDefinition>
 		resolve({
 			queue: {
 				type: "filepath",
-				description: "The .json file that contains the main queue"
-			},
-			next: {
-				type: "filepath",
-				description: "The .json file that contains the next-up queue"
+				description: "The .json file that holds the data."
 			}
 		});
 	});
