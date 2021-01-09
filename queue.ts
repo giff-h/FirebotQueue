@@ -33,10 +33,12 @@ namespace Types {
 		UPDATE_BUTTON: unknown;
 	}
 
+	type SenderRole = "broadcaster" | "mod" | "vip" | "founder" | "sub";
+
 	interface FirebotCommand {
 		args: string[];
 		commandSender: string;
-		senderRoles: unknown[];
+		senderRoles: SenderRole[];
 		subcommandId: unknown;
 		trigger: string;
 		triggeredArg: unknown;
@@ -205,7 +207,7 @@ class QueueManager {
 			mainQueue: [],
 			nextUpQueue: [],
 			skippedQueue: [],
-			enabled: true,
+			enabled: false,
 			code: ""
 		};
 	}
