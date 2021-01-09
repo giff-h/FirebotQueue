@@ -88,7 +88,7 @@ class QueueManager {
             mainQueue: [],
             nextUpQueue: [],
             skippedQueue: [],
-            enabled: true,
+            enabled: false,
             code: ""
         };
     }
