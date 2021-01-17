@@ -623,8 +623,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 	},
 
 	"!leave": (manager: QueueManager) => {
-		if (!manager.isEnabled) return [];
-
 		const chatEffect = manager.removeUserFromQueueEffect(manager.sender);
 
 		return [...manager.persistEffects(), chatEffect];
@@ -639,8 +637,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 	},
 
 	"!skip": (manager: QueueManager) => {
-		if (!manager.isEnabled) return [];
-
 		const chatEffects = manager.skipUser(manager.sender);
 
 		return [...manager.persistEffects(), ...chatEffects];
@@ -654,8 +650,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 		if (Utils.isString(verb)) {
 			switch (verb.trim().toLowerCase()) {
 				case "list": {
-					if (!manager.isEnabled) return [];
-
 					const
 						users = Object.assign([], manager.mainQueue),
 						singular = users.length === 1,
@@ -665,8 +659,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					effects.push(...manager.reportUsersInListEffects(users, predicate));
 				}
 				case "next": {
-					if (!manager.isEnabled) return [];
-
 					const nextArg = manager.commandArgument(1);
 
 					if (Utils.isString(nextArg)) {
@@ -682,8 +674,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "remove": {
-					if (!manager.isEnabled) return [];
-
 					const user = Utils.hopefulUserName(manager.commandArgument(1));
 
 					if (user !== null) {
@@ -694,8 +684,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "shift": {
-					if (!manager.isEnabled) return [];
-
 					const shiftArg = manager.commandArgument(1);
 
 					if (Utils.isString(shiftArg)) {
@@ -718,8 +706,6 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "unshift": {
-					if (!manager.isEnabled) return [];
-
 					const unshiftArg = manager.commandArgument(1);
 
 					if (Utils.isString(unshiftArg)) {
@@ -742,15 +728,33 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 					break;
 				}
 				case "on": {
-					manager.enabled = true;
-					effects.push(...manager.persistEffects());
-					effects.push(Utils.chatMessageEffect("The queue is on"));
+					const chatEffect = Utils.chatMessageEffect();
+
+					if (manager.enabled) {
+						manager.uncacheData();
+						chatEffect.message = "The queue was on";
+					} else {
+						manager.enabled = true;
+						effects.push(...manager.persistEffects());
+						chatEffect.message = "The queue is on";
+					}
+
+					effects.push(chatEffect);
 					break;
 				}
 				case "off": {
-					manager.enabled = false;
-					effects.push(...manager.persistEffects());
-					effects.push(Utils.chatMessageEffect("The queue is off"));
+					const chatEffect = Utils.chatMessageEffect();
+
+					if (manager.enabled) {
+						manager.enabled = false;
+						effects.push(...manager.persistEffects());
+						chatEffect.message = "The queue is off";
+					} else {
+						manager.uncacheData();
+						chatEffect.message = "The queue was off";
+					}
+
+					effects.push(chatEffect);
 					break;
 				}
 				default: {
