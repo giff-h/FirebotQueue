@@ -106,8 +106,9 @@ namespace Types {
 		mainQueue: string[];
 		nextUpQueue: string[];
 		skippedQueue: string[];
+		goldenTickets: string[];
+		ticketRedeemer: string | null;
 		enabled: boolean;
-		code: string;
 	}
 
 	export type ScriptParameterDefinition = {
@@ -125,14 +126,6 @@ declare const EffectType: Types.EffectTypeType;  // This is available in the out
 
 namespace Utils {
 	/**
-	 * Check if something is a string. Mostly exists for the typing.
-	 * @param x Can be anything
-	 */
-	export function isString(x: unknown): x is string {
-		return typeof x === "string";
-	}
-
-	/**
 	 * Check if the value is a valid number that can be used to manipulate the queues.
 	 * @param x The value to check
 	 */
@@ -147,7 +140,7 @@ namespace Utils {
 	export function isValidQueue(hopefulQueue: unknown): hopefulQueue is string[] {
 		if (Array.isArray(hopefulQueue)) {
 			for (let i = 0; i < hopefulQueue.length; i++) {
-				if (!isString(hopefulQueue[i])) {
+				if (typeof hopefulQueue[i] !== "string") {
 					return false;
 				}
 			}
@@ -162,7 +155,7 @@ namespace Utils {
 	 * @returns The username without leading `@`, or `null`
 	 */
 	export function hopefulUserName(raw: any): string | null {
-		if (isString(raw)) {
+		if (typeof raw === "string") {
 			raw = raw.trim();
 			return raw.startsWith("@") ? raw.substring(1) : raw;
 		} else {
@@ -176,9 +169,9 @@ namespace Utils {
 	 * @param user The user to find in the queue
 	 */
 	export function userIndexInArray(users: string[], user: string): number {
-		user = user.toUpperCase();
+		user = user.toLocaleUpperCase();
 		for (let i = 0; i < users.length; i++) {
-			if (users[i].toUpperCase() === user) {
+			if (users[i].toLocaleUpperCase() === user) {
 				return i;
 			}
 		}
@@ -207,8 +200,9 @@ class QueueManager {
 			mainQueue: [],
 			nextUpQueue: [],
 			skippedQueue: [],
-			enabled: false,
-			code: ""
+			goldenTickets: [],
+			ticketRedeemer: null,
+			enabled: false
 		};
 	}
 
@@ -287,8 +281,11 @@ class QueueManager {
 			if (!(Object.prototype.hasOwnProperty.call(data, "skippedQueue") && Utils.isValidQueue(data.skippedQueue))) {
 				data.skippedQueue = defaultData.skippedQueue;
 			}
-			if (!(Object.prototype.hasOwnProperty.call(data, "code") && Utils.isString(data.code))) {
-				data.code = defaultData.code;
+			if (!(Object.prototype.hasOwnProperty.call(data, "goldenTickets") && Utils.isValidQueue(data.goldenTickets))) {
+				data.goldenTickets = defaultData.goldenTickets;
+			}
+			if (!(Object.prototype.hasOwnProperty.call(data, "ticketRedeemed") && (typeof data.ticketRedeemer === "string" || data.ticketRedeemer === null))) {
+				data.ticketRedeemer = defaultData.ticketRedeemer;
 			}
 			if (Object.prototype.hasOwnProperty.call(data, "enabled")) {
 				data.enabled = !!data.enabled;  // double-negating forces to a boolean while maintaining "truthiness", 0 "" null and undefined are falsy values
@@ -320,6 +317,28 @@ class QueueManager {
 	 */
 	get skippedQueue(): string[] {
 		return this.loadQueue().skippedQueue;
+	}
+
+	/**
+	 * The list of golden ticket holders
+	 */
+	get goldenTickets(): string[] {
+		return this.loadQueue().goldenTickets;
+	}
+
+	/**
+	 * The possible user who redeemed a ticket for this game
+	 */
+	get redeemer(): string | null {
+		return this.loadQueue().ticketRedeemer;
+	}
+
+	/**
+	 * Set the current ticket redeemer
+	 */
+	set redeemer(user: string) {
+		const data = this.loadQueue();
+		data.ticketRedeemer = user;
 	}
 
 	get isEnabled(): boolean {
@@ -461,7 +480,7 @@ class QueueManager {
 
 		user = skipIndex === -1 ? queue.splice(queueIndex, 1)[0] : skip.splice(skipIndex, 1)[0];
 		queue.push(user);
-		return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length}`);
+		return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length + skip.length}`);
 	}
 
 	/**
@@ -560,6 +579,7 @@ class QueueManager {
 			effect = Utils.chatMessageEffect(),
 			queue = this.mainQueue,
 			next = this.nextUpQueue,
+			skip = this.skippedQueue,
 			queueIndex = Utils.userIndexInArray(queue, user),
 			nextIndex = Utils.userIndexInArray(next, user);
 
@@ -569,7 +589,7 @@ class QueueManager {
 		} else if (queueIndex !== -1) {
 			user = queue[queueIndex];
 			next.splice(nextIndex, 1);
-			effect.message = `${user} is back in the queue at position ${queueIndex + 1}`;
+			effect.message = `${user} is back in the queue at position ${queueIndex + 1 + skip.length}`;
 		} else {
 			user = next.splice(nextIndex, 1)[0];
 			queue.unshift(user);
@@ -603,6 +623,27 @@ class QueueManager {
 		}
 
 		return effects;
+	}
+
+	redeemGoldenTicket(user: string): Types.ChatMessageEffect {
+		const
+			effect = Utils.chatMessageEffect(),
+			tickets = this.goldenTickets,
+			ticketIndex = Utils.userIndexInArray(tickets, user);
+
+		if (typeof this.redeemer === "string") {
+			effect.message = "Someone already redeemed a golden ticket for this next game.";
+			this.uncacheData();
+		} else if (ticketIndex === -1) {
+			effect.message = `${user} does not have a golden ticket.`;
+			this.uncacheData();
+		} else {
+			user = tickets[ticketIndex];
+			this.redeemer = user;
+			effect.message = `${user} has redeemed a golden ticket and will be in the next game.`
+		}
+
+		return effect;
 	}
 }
 
@@ -638,12 +679,16 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 		return [...manager.persistEffects(), ...chatEffects];
 	},
 
+	"!useticket": (_manager: QueueManager) => {
+		return [];
+	},
+
 	"!queue": (manager: QueueManager) => {
 		const
 			verb = manager.commandArgument(0),
 			effects: Types.BaseEffect[] = [];
 
-		if (Utils.isString(verb)) {
+		if (typeof verb === "string") {
 			switch (verb.trim().toLowerCase()) {
 				case "list": {
 					const
@@ -657,7 +702,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 				case "next": {
 					const nextArg = manager.commandArgument(1);
 
-					if (Utils.isString(nextArg)) {
+					if (typeof nextArg === "string") {
 						const nextCount = Number(nextArg.trim());
 
 						if (Utils.isUsableNumber(nextCount)) {
@@ -682,7 +727,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 				case "shift": {
 					const shiftArg = manager.commandArgument(1);
 
-					if (Utils.isString(shiftArg)) {
+					if (typeof shiftArg === "string") {
 						const shiftCount = Number(shiftArg.trim());
 
 						if (isNaN(shiftCount)) {
@@ -704,7 +749,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 				case "unshift": {
 					const unshiftArg = manager.commandArgument(1);
 
-					if (Utils.isString(unshiftArg)) {
+					if (typeof unshiftArg === "string") {
 						const unshiftCount = Number(unshiftArg.trim());
 
 						if (isNaN(unshiftCount)) {

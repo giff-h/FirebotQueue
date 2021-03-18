@@ -4,14 +4,6 @@ exports.run = exports.getDefaultParameters = void 0;
 var Utils;
 (function (Utils) {
     /**
-     * Check if something is a string. Mostly exists for the typing.
-     * @param x Can be anything
-     */
-    function isString(x) {
-        return typeof x === "string";
-    }
-    Utils.isString = isString;
-    /**
      * Check if the value is a valid number that can be used to manipulate the queues.
      * @param x The value to check
      */
@@ -26,7 +18,7 @@ var Utils;
     function isValidQueue(hopefulQueue) {
         if (Array.isArray(hopefulQueue)) {
             for (let i = 0; i < hopefulQueue.length; i++) {
-                if (!isString(hopefulQueue[i])) {
+                if (typeof hopefulQueue[i] !== "string") {
                     return false;
                 }
             }
@@ -41,7 +33,7 @@ var Utils;
      * @returns The username without leading `@`, or `null`
      */
     function hopefulUserName(raw) {
-        if (isString(raw)) {
+        if (typeof raw === "string") {
             raw = raw.trim();
             return raw.startsWith("@") ? raw.substring(1) : raw;
         }
@@ -56,9 +48,9 @@ var Utils;
      * @param user The user to find in the queue
      */
     function userIndexInArray(users, user) {
-        user = user.toUpperCase();
+        user = user.toLocaleUpperCase();
         for (let i = 0; i < users.length; i++) {
-            if (users[i].toUpperCase() === user) {
+            if (users[i].toLocaleUpperCase() === user) {
                 return i;
             }
         }
@@ -88,8 +80,9 @@ class QueueManager {
             mainQueue: [],
             nextUpQueue: [],
             skippedQueue: [],
-            enabled: false,
-            code: ""
+            goldenTickets: [],
+            ticketRedeemer: null,
+            enabled: false
         };
     }
     logDebug(message) {
@@ -157,8 +150,11 @@ class QueueManager {
             if (!(Object.prototype.hasOwnProperty.call(data, "skippedQueue") && Utils.isValidQueue(data.skippedQueue))) {
                 data.skippedQueue = defaultData.skippedQueue;
             }
-            if (!(Object.prototype.hasOwnProperty.call(data, "code") && Utils.isString(data.code))) {
-                data.code = defaultData.code;
+            if (!(Object.prototype.hasOwnProperty.call(data, "goldenTickets") && Utils.isValidQueue(data.goldenTickets))) {
+                data.goldenTickets = defaultData.goldenTickets;
+            }
+            if (!(Object.prototype.hasOwnProperty.call(data, "ticketRedeemed") && (typeof data.ticketRedeemer === "string" || data.ticketRedeemer === null))) {
+                data.ticketRedeemer = defaultData.ticketRedeemer;
             }
             if (Object.prototype.hasOwnProperty.call(data, "enabled")) {
                 data.enabled = !!data.enabled; // double-negating forces to a boolean while maintaining "truthiness", 0 "" null and undefined are falsy values
@@ -187,6 +183,25 @@ class QueueManager {
      */
     get skippedQueue() {
         return this.loadQueue().skippedQueue;
+    }
+    /**
+     * The list of golden ticket holders
+     */
+    get goldenTickets() {
+        return this.loadQueue().goldenTickets;
+    }
+    /**
+     * The possible user who redeemed a ticket for this game
+     */
+    get redeemer() {
+        return this.loadQueue().ticketRedeemer;
+    }
+    /**
+     * Set the current ticket redeemer
+     */
+    set redeemer(user) {
+        const data = this.loadQueue();
+        data.ticketRedeemer = user;
     }
     get isEnabled() {
         return this.loadQueue().enabled;
@@ -297,7 +312,7 @@ class QueueManager {
         const queue = this.mainQueue, skip = this.skippedQueue, queueIndex = Utils.userIndexInArray(queue, user), skipIndex = Utils.userIndexInArray(skip, user);
         user = skipIndex === -1 ? queue.splice(queueIndex, 1)[0] : skip.splice(skipIndex, 1)[0];
         queue.push(user);
-        return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length}`);
+        return Utils.chatMessageEffect(`${user} is now at the end of the queue at position ${queue.length + skip.length}`);
     }
     /**
      * Take some users from the front of the skipped priority queue then the main queue, put them in the next-up queue, and report the next-up queue in chat.
@@ -371,7 +386,7 @@ class QueueManager {
      * @returns The chat effect to return to Firebot
      */
     unshiftOneUserFromNextEffect(user) {
-        const effect = Utils.chatMessageEffect(), queue = this.mainQueue, next = this.nextUpQueue, queueIndex = Utils.userIndexInArray(queue, user), nextIndex = Utils.userIndexInArray(next, user);
+        const effect = Utils.chatMessageEffect(), queue = this.mainQueue, next = this.nextUpQueue, skip = this.skippedQueue, queueIndex = Utils.userIndexInArray(queue, user), nextIndex = Utils.userIndexInArray(next, user);
         if (nextIndex === -1) {
             effect.message = `${user} wasn't up next`;
             this.uncacheData();
@@ -379,7 +394,7 @@ class QueueManager {
         else if (queueIndex !== -1) {
             user = queue[queueIndex];
             next.splice(nextIndex, 1);
-            effect.message = `${user} is back in the queue at position ${queueIndex + 1}`;
+            effect.message = `${user} is back in the queue at position ${queueIndex + 1 + skip.length}`;
         }
         else {
             user = next.splice(nextIndex, 1)[0];
@@ -408,6 +423,23 @@ class QueueManager {
         }
         return effects;
     }
+    redeemGoldenTicket(user) {
+        const effect = Utils.chatMessageEffect(), tickets = this.goldenTickets, ticketIndex = Utils.userIndexInArray(tickets, user);
+        if (typeof this.redeemer === "string") {
+            effect.message = "Someone already redeemed a golden ticket for this next game.";
+            this.uncacheData();
+        }
+        else if (ticketIndex === -1) {
+            effect.message = `${user} does not have a golden ticket.`;
+            this.uncacheData();
+        }
+        else {
+            user = tickets[ticketIndex];
+            this.redeemer = user;
+            effect.message = `${user} has redeemed a golden ticket and will be in the next game.`;
+        }
+        return effect;
+    }
 }
 /**
  * The object that contains the command and argument dispatch actions
@@ -433,9 +465,12 @@ const actions = {
         const chatEffects = manager.skipUser(manager.sender);
         return [...manager.persistEffects(), ...chatEffects];
     },
+    "!useticket": (_manager) => {
+        return [];
+    },
     "!queue": (manager) => {
         const verb = manager.commandArgument(0), effects = [];
-        if (Utils.isString(verb)) {
+        if (typeof verb === "string") {
             switch (verb.trim().toLowerCase()) {
                 case "list": {
                     const users = Object.assign([], manager.mainQueue), singular = users.length === 1, predicate = `${users.length} ${singular ? "user" : "users"} in the queue`;
@@ -444,7 +479,7 @@ const actions = {
                 }
                 case "next": {
                     const nextArg = manager.commandArgument(1);
-                    if (Utils.isString(nextArg)) {
+                    if (typeof nextArg === "string") {
                         const nextCount = Number(nextArg.trim());
                         if (Utils.isUsableNumber(nextCount)) {
                             manager.nextUpQueue.splice(0);
@@ -466,7 +501,7 @@ const actions = {
                 }
                 case "shift": {
                     const shiftArg = manager.commandArgument(1);
-                    if (Utils.isString(shiftArg)) {
+                    if (typeof shiftArg === "string") {
                         const shiftCount = Number(shiftArg.trim());
                         if (isNaN(shiftCount)) {
                             const user = Utils.hopefulUserName(shiftArg);
@@ -486,7 +521,7 @@ const actions = {
                 }
                 case "unshift": {
                     const unshiftArg = manager.commandArgument(1);
-                    if (Utils.isString(unshiftArg)) {
+                    if (typeof unshiftArg === "string") {
                         const unshiftCount = Number(unshiftArg.trim());
                         if (isNaN(unshiftCount)) {
                             const user = Utils.hopefulUserName(unshiftArg);
