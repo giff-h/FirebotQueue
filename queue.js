@@ -255,15 +255,10 @@ class QueueManager {
      * @returns The chat effect to return to Firebot
      */
     addUserToQueueEffect(user) {
-        const effect = Utils.chatMessageEffect(), queue = this.mainQueue, skip = this.skippedQueue, queueIndex = Utils.userIndexInArray(queue, user), skipIndex = Utils.userIndexInArray(skip, user);
-        if (skipIndex !== -1) {
-            user = skip[skipIndex];
-            effect.message = `${user} is already in the skipped priority queue at position ${skipIndex + 1}`;
-            this.uncacheData();
-        }
-        else if (queueIndex !== -1) {
-            user = queue[queueIndex];
-            effect.message = `${user} is already in the queue at position ${queueIndex + 1}`;
+        const effect = Utils.chatMessageEffect(), queue = this.mainQueue, skip = this.skippedQueue, fullQueue = [...skip, ...queue], userIndex = Utils.userIndexInArray(fullQueue, user);
+        if (userIndex !== -1) {
+            user = fullQueue[userIndex];
+            effect.message = `${user} is already in the queue at position ${userIndex + 1}`;
             this.uncacheData();
         }
         else {
