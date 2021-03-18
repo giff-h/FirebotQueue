@@ -35,7 +35,7 @@ Two upcoming Firebot features will affect this project:
 	- If the sender is not in either queue, they're still added.
 	- The bot always says in chat: `TwitchUser is now at the end of the queue at position 3`.
 - `!skip`
-	- The sender is removed from the next-up queue, added to the end of the skipped priority queue, one user is shifted from the main queue to the next-up queue to replace them, and the bot says in chat: `Skipping TwitchUser` followed by the normal `!queue shift 1` response
+	- The sender is removed from the next-up queue, added to the end of the skipped priority queue, one user is shifted from the main queue to the next-up queue to replace them, and the bot says in chat: `Skipping TwitchUser` followed by the normal `!queue shift 1` response.
 	- If the sender is not in the next-up queue, the bot says in chat: `TwitchUser wasn't up next`.
 - `!queue`
 	- This command takes arguments.
