@@ -46,6 +46,9 @@ Two upcoming Firebot features will affect this project:
 	- `remove` - Usage: `!queue remove NotJeffBezos`
 		- The given user is removed from the main queue, and the bot says in chat: `NotJeffBezos is no longer in the queue`.
 		- If the given user is not in the main queue, the bot says in chat: `NotJeffBezos wasn't in the queue`.
+	- `replace` - Usage: `!queue replace NotHereAnymore`
+		- The given user is removed from the next-up queue, one user is shifted from the main queue to the next-up queue to replace them, and the bot says `NotHereAnymore is no longer in the queue` followed by the normal `!queue shift 1` response.
+		- If the given user is not in the next-up queue, the bot says in chat `NotHereAnymore wasn't up next`.
 	- `shift` - Usage: `!queue shift 2` or `!queue shift TwitchUser`
 		- If this is a number, that many users are grabbed from the front of the main queue, added to the next-up queue, and the bot says in chat what it says for `!queue next X`.
 		- If this is a username, that user is grabbed from the main queue, added to the next-up queue, and the bot says in chat: `TwitchUser is also up next`.
