@@ -413,7 +413,7 @@ class QueueManager {
 			this.uncacheData();
 		} else {
 			queue.push(user);
-			effect.message = `${user} added to the queue at position ${queue.length}`;
+			effect.message = `${user} added to the queue at position ${skip.length + queue.length}`;
 		}
 
 		return effect;
