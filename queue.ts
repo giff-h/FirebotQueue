@@ -689,6 +689,7 @@ const actions: Record<string, (manager: QueueManager) => Types.BaseEffect[]> = {
 							manager.unshiftOneUserFromNextEffect(user);
 							effects.push(manager.removeUserFromQueueEffect(user));
 							effects.push(...manager.shiftSomeUsersToNextEffects(1, false));
+							effects.unshift(...manager.persistEffects());
 						}
 					}
 					break;
