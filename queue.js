@@ -464,6 +464,21 @@ const actions = {
                     }
                     break;
                 }
+                case "replace": {
+                    const user = Utils.hopefulUserName(manager.commandArgument(1));
+                    if (user !== null) {
+                        if (Utils.userIndexInArray(manager.nextUpQueue, user) === -1) {
+                            effects.push(manager.unshiftOneUserFromNextEffect(user));
+                        }
+                        else {
+                            manager.unshiftOneUserFromNextEffect(user);
+                            effects.push(manager.removeUserFromQueueEffect(user));
+                            effects.push(...manager.shiftSomeUsersToNextEffects(1, false));
+                            effects.unshift(...manager.persistEffects());
+                        }
+                    }
+                    break;
+                }
                 case "shift": {
                     const shiftArg = manager.commandArgument(1);
                     if (Utils.isString(shiftArg)) {
