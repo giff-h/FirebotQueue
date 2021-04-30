@@ -263,7 +263,7 @@ class QueueManager {
         }
         else {
             queue.push(user);
-            effect.message = `${user} added to the queue at position ${queue.length}`;
+            effect.message = `${user} added to the queue at position ${skip.length + queue.length}`;
         }
         return effect;
     }
@@ -461,6 +461,21 @@ const actions = {
                         const chatEffect = manager.removeUserFromQueueEffect(user);
                         effects.push(...manager.persistEffects());
                         effects.push(chatEffect);
+                    }
+                    break;
+                }
+                case "replace": {
+                    const user = Utils.hopefulUserName(manager.commandArgument(1));
+                    if (user !== null) {
+                        if (Utils.userIndexInArray(manager.nextUpQueue, user) === -1) {
+                            effects.push(manager.unshiftOneUserFromNextEffect(user));
+                        }
+                        else {
+                            manager.unshiftOneUserFromNextEffect(user);
+                            effects.push(manager.removeUserFromQueueEffect(user));
+                            effects.push(...manager.shiftSomeUsersToNextEffects(1, false));
+                            effects.unshift(...manager.persistEffects());
+                        }
                     }
                     break;
                 }
