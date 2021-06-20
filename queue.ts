@@ -465,7 +465,8 @@ class QueueManager {
 	}
 
 	/**
-	 * Take some users from the front of the skipped priority queue then the main queue, put them in the next-up queue, and report the next-up queue in chat.
+	 * Takes the next `count` users in queue, puts them in the next-up queue, and reports the next-up queue in chat.
+	 * If `skippedFirst` is true, the skipped priority queue is put back at the front of the main queue, and cleared.
 	 * If `skippedFirst` is false, the skipped priority queue is not used.
 	 * If the count is not a positive integer, nothing happens, and nothing is reported.
 	 * @param count The number of users to move
@@ -477,32 +478,27 @@ class QueueManager {
 			return [];
 		}
 
-		let usersShifted = 0;
 		const
-			next = this.nextUpQueue,
-			initialLength = next.length;
+			queue = this.mainQueue,
+			next = this.nextUpQueue;
 
 		if (skippedFirst) {
-			const skip = this.skippedQueue;
-
-			if (skip.length !== 0) {
-				next.push(...skip.splice(0, count).filter(user => Utils.userIndexInArray(next, user) === -1));
-				usersShifted = next.length - initialLength;
-			}
+			this.skippedQueue.splice(0).reverse().forEach((user) => {
+				if (Utils.userIndexInArray(queue, user) === -1) {
+					queue.unshift(user);
+				}
+			});
 		}
 
-		if (usersShifted < count) {
-			const queue = this.mainQueue;
-			next.push(...queue.splice(0, count - usersShifted).filter(user => Utils.userIndexInArray(next, user) === -1));
-		}
+		next.push(...queue.splice(0, count).filter(user => Utils.userIndexInArray(next, user) === -1));
 
 		const users = Object.assign([], next);
 		return this.reportUsersInListEffects(users, `Next ${users.length} in queue`);
 	}
 
 	/**
-	 * Take one user from the main queue, put them in the next-up queue, and report in chat.
-	 * If the user is not in the queue, nothing happens, and the absence is reported.
+	 * Take one user from the skip queue or main queue, put them in the next-up queue, and report in chat.
+	 * If the user is not in queue, nothing happens, and the absence is reported.
 	 * @param user The user to move
 	 * @returns The chat effect to return to Firebot
 	 */
