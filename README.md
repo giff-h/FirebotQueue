@@ -42,19 +42,19 @@ Two upcoming Firebot features will affect this project:
 	- `list` - Usage: `!queue list`
 		- Lists the users in the main queue. The bot says in chat: `3 users in the queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `next` - Usage: `!queue next 3`
-		- If this is a number, that many users are grabbed first from the front of the skipped priority queue, then from the front of the main queue if necessary, the next-up queue **becomes** them, and the bot says in chat: `Next 3 in queue: hamstap85, NotJeffBezos, TwitchUser`.
+		- If this is a positive integer, that many users are grabbed first from the front of the skipped priority queue, then from the front of the main queue if necessary, the next-up queue **becomes** them, and the bot says in chat: `Next 3 in queue: hamstap85, NotJeffBezos, TwitchUser`.
 	- `remove` - Usage: `!queue remove NotJeffBezos`
-		- The given user is removed from the main queue, and the bot says in chat: `NotJeffBezos is no longer in the queue`.
+		- The given user is removed from the skipped or main queue, and the bot says in chat: `NotJeffBezos is no longer in the queue`.
 		- If the given user is not in the main queue, the bot says in chat: `NotJeffBezos wasn't in the queue`.
 	- `replace` - Usage: `!queue replace NotHereAnymore`
 		- The given user is removed from the next-up queue, one user is shifted from the main queue to the next-up queue to replace them, and the bot says `NotHereAnymore is no longer in the queue` followed by the normal `!queue shift 1` response.
 		- If the given user is not in the next-up queue, the bot says in chat `NotHereAnymore wasn't up next`.
 	- `shift` - Usage: `!queue shift 2` or `!queue shift TwitchUser`
-		- If this is a number, that many users are grabbed from the front of the main queue, added to the next-up queue, and the bot says in chat what it says for `!queue next X`.
-		- If this is a username, that user is grabbed from the main queue, added to the next-up queue, and the bot says in chat: `TwitchUser is also up next`.
-		- If the given user is not in the main queue, they are **not** added to the next-up queue, and the bot says in chat: `TwitchUser wasn't in the queue`.
+		- If this is a positive integer, that many users are grabbed from the front of the skipped or main queue, added to the next-up queue, and the bot says in chat what it says for `!queue next X`.
+		- If this is a username, that user is grabbed from the skipped or main queue, added to the next-up queue, and the bot says in chat: `TwitchUser is also up next`.
+		- If the given user is not in queue, they are **not** added to the next-up queue, and the bot says in chat: `TwitchUser wasn't in the queue`.
 	- `unshift` - Usage: `!queue unshift 2` or `!queue unshift TwitchUser`
-		- If this is a number, that many users are grabbed from the end of the next-up queue, added to the front of the main queue, and the bot says in chat: `There is now 1 user next up`.
+		- If this is a positive integer, that many users are grabbed from the end of the next-up queue, added to the front of the main queue, and the bot says in chat: `There is now 1 user next up`.
 		- If any of those users are already in the main queue, they are **not** added twice, and the message is the same.
 		- If this is a username, that user is grabbed from the next up queue, added to the front of the queue, and the bot says in chat: `TwitchUser is now at the front of the queue`.
 		- If the given user is not in the next up queue, they are **not** added to the main queue, and the bot says in chat: `TwitchUser wasn't up next`.
