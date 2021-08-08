@@ -1,15 +1,17 @@
 {
-	"compilerOptions": {
-		"target": "ES6",
-		"noImplicitAny": true,
-		"noImplicitReturns": true,
-		"removeComments": false,
-		"sourceMap": false,
-		"noUnusedParameters": true,
-		"outDir": "./",
-		"module": "CommonJS"
-	},
-	"files": [
-		"queue.ts"
-	]
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "target": "ES6",
+    "module": "CommonJS",
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "downlevelIteration": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "strictBindCallApply": true
+  },
+  "include": ["./src/**/*"]
 }
