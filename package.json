@@ -1,10 +1,14 @@
 {
-  "name": "firebot_queue",
+  "name": "firebot-queue",
+  "scriptOutputName": "queue",
   "version": "1.0.0",
   "description": "A set of custom scripts to operate a queue in Firebot",
-  "main": "queue.js",
+  "main": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run test && webpack",
+    "build:dev": "npm run build && npm run copy",
+    "copy": "node ./scripts/copy-build.js",
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -17,6 +21,19 @@
   },
   "homepage": "https://github.com/hamstap85/FirebotQueue#readme",
   "devDependencies": {
-    "typescript": "^4.0.3"
-  }
+    "@types/fs-extra": "^9.0.11",
+    "@types/jest": "^26.0.23",
+    "@types/node": "^15.12.4",
+    "firebot-custom-scripts-types": "https://github.com/crowbartools/firebot-custom-scripts-types/tarball/8dbd4a5b67e01989568201351c24ccecb2ab055a",
+    "fs-extra": "^10.0.0",
+    "jest": "^27.0.5",
+    "terser-webpack-plugin": "^5.1.4",
+    "ts-jest": "^27.0.3",
+    "ts-loader": "^9.2.3",
+    "twitch": "^4.6.0",
+    "typescript": "^4.3.4",
+    "webpack": "^5.40.0",
+    "webpack-cli": "^4.7.2"
+  },
+  "dependencies": {}
 }

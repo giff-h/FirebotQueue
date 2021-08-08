@@ -1,0 +1,26 @@
+{
+  "bracketSpacing": true,
+  "endOfLine": "auto",
+  "htmlWhitespaceSensitivity": "css",
+  "proseWrap": "preserve",
+  "semi": true,
+  "overrides": [
+    {
+      "files": ["*.json", ".prettierrc", "*.webmanifest"],
+      "options": {
+        "tabWidth": 2
+      }
+    },
+    {
+      "files": ["*.yml", "*.yaml"],
+      "options": {
+        "tabWidth": 2
+      }
+    }
+  ],
+  "printWidth": 140,
+  "singleQuote": false,
+  "tabWidth": 4,
+  "useTabs": false,
+  "trailingComma": "all"
+}
