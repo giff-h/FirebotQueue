@@ -15,16 +15,16 @@ interface TriggerHandler {
 const defaultQueue: QueueFile<GamesQueueNames, GamesQueueExtras> = { queues: { main: [], next: [], skip: [] }, extras: { enabled: true } };
 
 export function commandSender(runRequest: RunRequest<Params>): string | null {
-    return runRequest.trigger.metadata.command?.sender ?? null;
+    return runRequest.trigger.metadata.username ?? null;
 }
 
 export function argAsUser(runRequest: RunRequest<Params>, index: number): string | null {
-    const x = cleanUserName(runRequest.trigger.metadata.command?.args?.[index]);
+    const x = cleanUserName(runRequest.trigger.metadata.userCommand?.args[index]);
     return x?.length ? x : null;
 }
 
 export function argAsPositiveInteger(runRequest: RunRequest<Params>, index: number): number | null {
-    const x = Number(runRequest.trigger.metadata.command?.args?.[index]?.trim() ?? NaN);
+    const x = Number(runRequest.trigger.metadata.userCommand?.args[index]?.trim() ?? NaN);
     return !isNaN(x) && Number.isInteger(x) && x > 0 ? x : null;
 }
 

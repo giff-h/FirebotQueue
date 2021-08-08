@@ -24,13 +24,14 @@ const script: Firebot.CustomScript<Params> = {
     run: (runRequest) => {
         const { logger } = runRequest.modules;
         const result = { success: true, effects: [] as Effects.Effect[] };
-        const trigger = runRequest.trigger.metadata.command?.trigger;
+        const trigger = runRequest.trigger.metadata.userCommand?.trigger;
         if (typeof trigger === "string") {
+            let handled = false;
             for (const handler of gamesQueueHandlers) {
                 if (handler.trigger === trigger) {
                     const parts = handler.parsers.map((parser, index) =>
                         typeof parser === "string"
-                            ? runRequest.trigger.metadata.command.args?.[index] === parser
+                            ? runRequest.trigger.metadata.userCommand.args[index] === parser
                             : parser(runRequest, index),
                     );
                     if (parts.every((value) => !!value)) {
@@ -40,13 +41,16 @@ const script: Firebot.CustomScript<Params> = {
                                 ...parts.filter((value) => typeof value === "string" || typeof value === "number"),
                             ),
                         );
+                        handled = true;
                         break;
                     }
                 }
             }
-            logger.warn("Unhandled command:", runRequest.trigger.metadata.command);
+            if (!handled) {
+                logger.warn(`Unhandled userCommand "${trigger}":`, runRequest);
+            }
         } else {
-            logger.warn("Trigger was not a string, nothing happens");
+            logger.warn("Trigger was not a string, nothing happens:", runRequest);
         }
         return result as ScriptReturnObject;
     },
