@@ -22,9 +22,9 @@ import { makeRunRequest } from "./runRequest.mock";
 const filepath = "foo.json";
 
 describe("commandSender", () => {
-    it("extracts the command sender", () => {
+    it("extracts the userCommand sender", () => {
         const expected = "Sender";
-        const runRequest = makeRunRequest(filepath, { sender: expected });
+        const runRequest = makeRunRequest(filepath, expected);
         const actual = commandSender(runRequest);
         expect(actual).toEqual(expected);
     });
@@ -39,13 +39,13 @@ describe("commandSender", () => {
 describe("argAsUser", () => {
     it("cleans the user arg", () => {
         const expected = "userName";
-        const runRequest = makeRunRequest(filepath, { args: ["@" + expected] });
+        const runRequest = makeRunRequest(filepath, undefined, { args: ["@" + expected] });
         const actual = argAsUser(runRequest, 0);
         expect(actual).toEqual(expected);
     });
 
     it("defaults to null when it can't parse the arg", () => {
-        const runRequest = makeRunRequest(filepath, { args: [] });
+        const runRequest = makeRunRequest(filepath, undefined, { args: [] });
         const actual = argAsUser(runRequest, 0);
         expect(actual).toBeNull();
     });
@@ -60,19 +60,19 @@ describe("argAsUser", () => {
 describe("argAsPositiveInteger", () => {
     it("cleans the number arg", () => {
         const expected = 4;
-        const runRequest = makeRunRequest(filepath, { args: [`${expected}`] });
+        const runRequest = makeRunRequest(filepath, undefined, { args: [`${expected}`] });
         const actual = argAsPositiveInteger(runRequest, 0);
         expect(actual).toEqual(expected);
     });
 
     it("rejects floats", () => {
-        const runRequest = makeRunRequest(filepath, { args: ["2.2"] });
+        const runRequest = makeRunRequest(filepath, undefined, { args: ["2.2"] });
         const actual = argAsPositiveInteger(runRequest, 0);
         expect(actual).toBeNull();
     });
 
     it("defaults to null when it can't parse the arg", () => {
-        const runRequest = makeRunRequest(filepath, { args: [] });
+        const runRequest = makeRunRequest(filepath, undefined, { args: [] });
         const actual = argAsPositiveInteger(runRequest, 0);
         expect(actual).toBeNull();
     });

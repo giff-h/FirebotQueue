@@ -19,7 +19,11 @@ function makeUserAccount(): UserAccount {
 const readJsonSync: ScriptModules["fs"]["readJsonSync"] = () => null;
 const log: LeveledLogMethod = () => void 0;
 
-export function makeRunRequest(filepath: string, command?: Effects.Trigger["metadata"]["command"]): RunRequest<Params> {
+export function makeRunRequest(
+    filepath: string,
+    sender?: string | undefined,
+    userCommand?: Partial<Effects.Trigger["metadata"]["userCommand"]>,
+): RunRequest<Params> {
     return {
         parameters: { queue: filepath },
         modules: {
@@ -27,6 +31,9 @@ export function makeRunRequest(filepath: string, command?: Effects.Trigger["meta
             fs: { readJsonSync },
         } as unknown as ScriptModules,
         firebot: { accounts: { streamer: makeUserAccount(), bot: makeUserAccount() }, settings: { webServerPort: 0 }, version: "" },
-        trigger: { type: "command", metadata: { username: "", ...(command ? { command } : {}) } },
+        trigger: {
+            type: "command",
+            metadata: { username: sender, ...(userCommand ? { userCommand: { trigger: "", args: [], ...userCommand } } : {}) },
+        },
     };
 }

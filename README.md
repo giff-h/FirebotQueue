@@ -10,20 +10,16 @@ Two upcoming Firebot features will affect this project:
 
 -   Currently v5, unknown if it will work on v6.
 -   You need to enable Custom Script Effect in Firebot advanced settings.
--   Firebot complains that it may not be for v5, I do not know what's missing. I've followed the documentation on the wiki. It works fine though.
 -   Any command parameter that can be a user is not validated to be an actual user in chat. This is not a real problem as currently the only way to get into the queue is if a user joins themself, and all user parameters affect users already in the queues.
--   Any command parameter that can be a user or a number will prefer a number, thus making a username that's all numbers impossible to access.
+-   Any command parameter that can be a user or a number will prefer a number, thus making a username that's all numbers impossible to access through that command.
 
 # Setup
 
--   Download `queue.js`, and put it in the Firebot scripts folder.
-    -   On Windows this is `%APPDATA%\Firebot\v5\profiles\Main Profile\scripts`.
-    -   There is a "scripts folder" link in the Run Custom Script dialogue view in the Firebot trigger setup, to help find it.
--   Create an empty text file for the queue.
-    -   It's standard to give it a `.json` extension, not `.txt`, but this doesn't really matter.
-    -   It makes sense for it to live with `queue.js`, but again, this doesn't matter.
--   Add triggers for the following 4 main commands, and have them run `queue.js`.
-    -   Trigger conditions for the arguments are not necessary, the script does this.
+-   The queue needs to be built first. This requires npm which has extensive resources on how to install.
+    -   Run these in the root directory of the repository:
+    -   `npm install` to prepare the environment.
+    -   `npm run build` to run tests and compile the queue script.
+    -   If you are building this on the same machine that has Firebot installed, `npm run build:dev` will copy it into the scripts folder for you.
 
 # Commands
 

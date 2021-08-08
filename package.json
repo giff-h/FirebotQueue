@@ -5,7 +5,7 @@
   "description": "A set of custom scripts to operate a queue in Firebot",
   "main": "",
   "scripts": {
-    "build": "webpack",
+    "build": "npm run test && webpack",
     "build:dev": "npm run build && npm run copy",
     "copy": "node ./scripts/copy-build.js",
     "test": "jest"
