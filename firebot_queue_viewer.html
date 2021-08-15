@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+	<meta charset="UTF-8" />
+	<title>Current Queue State</title>
+	<link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet" />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+</head>
+
+<body>
+	<table>
+		<thead>
+			<tr>
+				<th>In Queue</th>
+				<th>Next (Currently Playing)</th>
+				<th>Skipped Queue</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<td class="queue-table">
+					<ol type="1" class="queue-list">
+						<li>Loading...</li>
+					</ol>
+				</td>
+				<td class="queue-table">
+					<ol type="1" class="next-list">
+						<li>Loading...</li>
+					</ol>
+				</td>
+				<td class="queue-table">
+					<ol type="1" class="skip-list">
+						<li>Loading...</li>
+					</ol>
+				</td>
+			</tr>
+			<tr>
+				<td></td>
+				<td>
+					<div id="app" class="w-full h-full flex justify-center items-center flex-col relative">
+						<div v-if="toastShown" class="absolute top-3 bg-green-500 p-1 px-3 rounded">
+							{{toastMessage}}
+						</div>
+						<input v-model="code"
+							class="text-lg bg-gray-700 focus:ring-4 focus:ring-blue-400 rounded-lg p-2 outline-none"
+							style="font-size: 1.5rem" type="text" placeholder="Enter code" />
+						<button @click="whisperAll" type="button" id="send-code"
+							class="mt-3 inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+							{{buttonMessage}}
+						</button>
+					</div>
+				</td>
+				<td></td>
+			</tr>
+		</tbody>
+	</table>
+
+	<script>
+		// How long between table updates, in milliseconds
+		const TIME_BETWEEN_LIST_UPDATES_MS = 100
+
+		// Path to the queue.json file
+		const QUEUE_FILE_PATH = "queue.json"
+
+		// Queue attributes
+		const MAIN_QUEUE_ATTR = "main"
+		const NEXT_UP_QUEUE_ATTR = "next"
+		const SKIPPED_QUEUE_ATTR = "skip"
+
+		// Code whisper delay, in milliseconds
+		const WHISPER_DELAY_MS = 100
+
+		// Code whisper delay random offset in milliseconds (+/-), to hopefully avoid spam timeout
+		const WHISPER_FUZZ_OFFSET_MS = 100
+
+		// Important queue holder
+		const CURRENTLY_PLAYING = [];
+
+		//------------------------------ QUEUE POPULATION ------------------------------
+
+		function validateNameArray(obj, attr) {
+			let arr = null;
+			if (typeof obj === "object" && typeof obj.queues === "object") {
+				for (prop in obj.queues) {
+					if (Object.prototype.hasOwnProperty.call(obj.queues, prop) && prop === attr && Array.isArray(obj.queues[prop])) {
+						arr = obj.queues[prop];
+						break;
+					}
+				}
+			}
+			if (arr === null && Array.isArray(obj)) {
+				arr = obj;
+			}
+			if (arr === null) {
+				return null;
+			}
+			for (let i = 0; i < arr.length; ++i) {
+				let name = arr[i];
+				if (typeof name !== "string") {
+					return null;
+				}
+			}
+			return arr;
+		}
+
+		function populateListDOM(dom_classname, array, populateCurrentlyPlaying) {
+			let dom = $(dom_classname);
+			dom.empty();
+			if (populateCurrentlyPlaying) {
+				CURRENTLY_PLAYING.splice(0);
+				CURRENTLY_PLAYING.push(...array);
+			}
+			for (let i = 0; i < array.length; ++i) {
+				let name = array[i];
+
+				let item = document.createElement('li');
+				let text = document.createTextNode(name);
+				item.appendChild(text);
+				dom.append(item);
+			}
+		}
+
+		function fetchUrlAndUpdateDom(url, attr, dom, populateCurrentlyPlaying, callback) {
+			$.getJSON(url, response => {
+				var nameArray = validateNameArray(response, attr);
+				if (nameArray !== null) {
+					populateListDOM(dom, nameArray, populateCurrentlyPlaying);
+				}
+				callback();
+			}).fail(e => {
+				console.log("JSON error:", e)
+			});
+		}
+
+		const STATE_WAITING = -1;
+		const STATE_FETCH_MAIN = 0;
+		const STATE_FETCH_NEXT = 1;
+		const STATE_FETCH_SKIP = 2;
+
+		var g_state;
+
+		function advanceState() {
+			if (g_state == STATE_FETCH_MAIN) {
+				g_state = STATE_WAITING;
+				fetchUrlAndUpdateDom(QUEUE_FILE_PATH, MAIN_QUEUE_ATTR, ".queue-list", false, () => {
+					g_state = STATE_FETCH_NEXT;
+				});
+			}
+			else if (g_state == STATE_FETCH_NEXT) {
+				g_state = STATE_WAITING;
+				fetchUrlAndUpdateDom(QUEUE_FILE_PATH, NEXT_UP_QUEUE_ATTR, ".next-list", true, () => {
+					g_state = STATE_FETCH_SKIP;
+				});
+			}
+			else if (g_state == STATE_FETCH_SKIP) {
+				g_state = STATE_WAITING;
+				fetchUrlAndUpdateDom(QUEUE_FILE_PATH, SKIPPED_QUEUE_ATTR, ".skip-list", false, () => {
+					g_state = STATE_FETCH_MAIN;
+				});
+			}
+		}
+
+		$(document).ready(function () {
+			g_state = STATE_FETCH_MAIN;
+			setInterval(advanceState, TIME_BETWEEN_LIST_UPDATES_MS);
+		});
+
+		//------------------------------- CODE WHISPERING -------------------------------
+
+		function getFuzzedTimeToNextWhisper() {
+			// Get a random number between +/- fuzz offset
+			const offset = Math.floor(Math.random() * (WHISPER_FUZZ_OFFSET_MS * 2 + 1)) - WHISPER_FUZZ_OFFSET_MS;
+			return WHISPER_DELAY_MS + offset;
+		}
+
+		theBtn = $("#send-code");
+		new Vue({
+			el: "#app",
+			data: {
+				url: "http://localhost:7472/api/v1/effects/preset/e86a96e0-4fd5-11eb-b7df-7f283e42b332",
+				code: "",
+				toastMessage: "",
+				toastShown: false,
+				buttonMessage: "Send Code",
+				currentlyPlaying: [],
+			},
+			methods: {
+				whisperAll: function () {
+					const app = this;
+					if (CURRENTLY_PLAYING.length === 0 || app.code.trim().length === 0) return;
+					app.currentlyPlaying = [];
+					app.currentlyPlaying.push(...CURRENTLY_PLAYING);
+					app.whisperOneThen();
+				},
+				whisperOneThen: function () {
+					const
+						app = this,
+						code = app.code.trim();
+					if (app.currentlyPlaying.length === 0 || code.length === 0) return;
+					const player = app.currentlyPlaying[0];
+					app.disableButton();
+					app.buttonMessage = `Whispering ${player}...`;
+					fetch(app.url, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							args: {
+								code: code,
+								player: player,
+							},
+						}),
+					})
+						.then(() => {
+							// Success hits here, error bypasses.
+							// `splice(0, 1)` to pop one from the beginning, equivalent to top down in the markup. `pop()` is from the right
+							app.currentlyPlaying.splice(0, 1);
+
+							if (app.currentlyPlaying.length === 0) {
+								// All done.
+								app.code = "";
+								app.buttonMessage = "Send Code";
+								app.enableButton();
+								app.showToast("Whispered everyone!");
+							} else {
+								// Still more.
+								app.buttonMessage = `Whispered ${player}. Waiting...`;
+								setTimeout(app.whisperOneThen.bind(app), getFuzzedTimeToNextWhisper());
+							}
+						})
+						.catch(e => {
+							console.log("Error:", e);
+							app.enableButton();
+							app.showToast("Firebot reported an error, try again.");
+						});
+				},
+				disableButton: function () {
+					theBtn.prop("disabled", true);
+				},
+				enableButton: function () {
+					theBtn.prop("disabled", false);
+				},
+				showToast: function (message) {
+					const app = this;
+					app.toastMessage = message;
+					app.toastShown = true;
+					setTimeout(() => {
+						app.toastShown = false;
+					}, 3000);
+				},
+			},
+		});
+	</script>
+
+	<style>
+		td.queue-table {
+			width: 33%;
+			border: 1px solid black;
+			padding: 0 1.5em;
+		}
+
+		td.queue-table ol {
+			list-style-type: decimal;
+		}
+	</style>
+</body>
+
+</html>
